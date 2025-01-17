@@ -11,7 +11,7 @@
 
 #include "entity.h"
 #include "mem.h"
-#include "phys.h"
+#include "collider.h"
 #include "rigel.h"
 #include "tinyxml2.h"
 
@@ -62,8 +62,8 @@ typedef std::size_t StageId;
 
 struct Stage
 {
-    phys::Rectangle dimensions;
-    phys::ColliderSet colliders;
+    Rectangle dimensions;
+    ColliderSet colliders;
 };
 
 // TODO: what even is this?
@@ -93,12 +93,12 @@ struct WorldChunk
                         entity::EntityType type,
                         SpriteResourceId sprite_id,
                         glm::vec3 initial_position,
-                        phys::Rectangle collider);
+                        Rectangle collider);
 
     entity::Entity* add_player(mem::GameMem& mem,
                                SpriteResourceId sprite_id,
                                glm::vec3 initial_position,
-                               phys::Rectangle collider);
+                               Rectangle collider);
 };
 
 WorldChunk*

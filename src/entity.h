@@ -7,7 +7,7 @@
 #include <glm/glm.hpp>
 
 #include "rigel.h"
-#include "phys.h"
+#include "collider.h"
 #include "resource.h"
 
 namespace rigel {
@@ -51,7 +51,7 @@ struct Entity
     glm::vec3 acceleration;
     glm::vec3 forces;
 
-    phys::ColliderSet* colliders;
+    ColliderSet* colliders;
 };
 
 } // namespace entity

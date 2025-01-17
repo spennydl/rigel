@@ -54,9 +54,7 @@ struct Arena
         auto start = align_sz(next_free_idx, align_to);
         auto end = align_sz(start + bytes, align_to);
 
-        if (end > arena_bytes) {
-            return nullptr;
-        }
+        assert (end < arena_bytes && "Overflowed memory arena!");
 
         next_free_idx = end;
 

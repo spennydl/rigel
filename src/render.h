@@ -2,7 +2,7 @@
 #define RENDER_H_
 
 #include "glad/gl.h"
-#include "phys.h"
+#include "collider.h"
 #include "resource.h"
 #include "rigel.h"
 #include <string>
@@ -104,12 +104,12 @@ struct Texture
 
 struct Quad
 {
-    rigel::phys::Rectangle dims;
+    rigel::Rectangle dims;
     Shader shader;
     GLuint vao;
 
     // Quad(Rectangle rect);
-    Quad(rigel::phys::Rectangle rect, Shader shader);
+    Quad(rigel::Rectangle rect, Shader shader);
 };
 
 struct RenderLine

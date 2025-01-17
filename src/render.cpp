@@ -1,3 +1,4 @@
+#include "collider.h"
 #include "render.h"
 #include "world.h"
 #include <glm/glm.hpp>
@@ -255,7 +256,7 @@ void render_map(const MapDrawLayer& map)
 
 #endif
 
-Quad::Quad(rigel::phys::Rectangle rect, Shader shader)
+Quad::Quad(rigel::Rectangle rect, Shader shader)
   : dims(rect)
   , shader(shader)
 {
@@ -519,7 +520,7 @@ SpriteRenderStep::render_entities_in_world(Viewport* viewport,
         assert(sprite && "Trying to render unloaded sprite!");
 
         auto screen_transform = viewport->get_screen_transform();
-        phys::Rectangle quad_rect = { .x = entity->position.x,
+        Rectangle quad_rect = { .x = entity->position.x,
                                       .y = entity->position.y,
                                       .w = sprite->width,
                                       .h = sprite->height };

@@ -1,5 +1,5 @@
+#include "collider.h"
 #include "world.h"
-#include "phys.h"
 #include <iostream>
 
 namespace rigel {
@@ -40,7 +40,7 @@ load_level_data(mem::GameMem& mem,
     stage->dimensions.h = height;
     stage->colliders.n_aabbs = n_objects;
     stage->colliders.aabbs =
-      mem.stage_arena.alloc_array<phys::AABB>(n_objects);
+      mem.stage_arena.alloc_array<AABB>(n_objects);
 
     world_chunk->active_stage = stage;
 
@@ -84,7 +84,7 @@ WorldChunk::add_entity(mem::GameMem& mem,
                        entity::EntityType type,
                        SpriteResourceId sprite_id,
                        glm::vec3 initial_position,
-                       phys::Rectangle collider)
+                       Rectangle collider)
 {
     // TODO: allocating these is likely more tricky
     EntityId entity_id = next_free_entity_idx;
@@ -100,9 +100,9 @@ WorldChunk::add_entity(mem::GameMem& mem,
     new_entity->sprite_id = sprite_id;
     new_entity->position = initial_position;
 
-    auto colliders = mem.colliders_arena.alloc_simple<phys::ColliderSet>();
+    auto colliders = mem.colliders_arena.alloc_simple<ColliderSet>();
     colliders->n_aabbs = 1;
-    colliders->aabbs = mem.colliders_arena.alloc_array<phys::AABB>(1);
+    colliders->aabbs = mem.colliders_arena.alloc_array<AABB>(1);
     colliders->aabbs[0] = aabb_from_rect(collider);
     new_entity->colliders = colliders;
 
@@ -113,7 +113,7 @@ entity::Entity*
 WorldChunk::add_player(mem::GameMem& mem,
                        SpriteResourceId sprite_id,
                        glm::vec3 initial_position,
-                       phys::Rectangle collider)
+                       Rectangle collider)
 {
     entity_hash[0].id = PLAYER_ENTITY_ID;
     entity_hash[0].index = next_free_entity_idx;
@@ -129,9 +129,9 @@ WorldChunk::add_player(mem::GameMem& mem,
     // TODO: I need an easier storage scheme here. We should have collider
     // ID's I think? I need a way to identify when two entities use the
     // same collider set.
-    auto colliders = mem.colliders_arena.alloc_simple<phys::ColliderSet>();
+    auto colliders = mem.colliders_arena.alloc_simple<ColliderSet>();
     colliders->n_aabbs = 1;
-    colliders->aabbs = mem.colliders_arena.alloc_array<phys::AABB>(1);
+    colliders->aabbs = mem.colliders_arena.alloc_array<AABB>(1);
     colliders->aabbs[0] = aabb_from_rect(collider);
     new_entity->colliders = colliders;
 
