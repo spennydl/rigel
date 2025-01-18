@@ -8,6 +8,31 @@ namespace phys {
 // I'm a little hesitant to make a PhysicsObject type
 // but that may be the way to go?
 
+void handle_entity_collision(entity::Entity* entity, glm::vec3 penetration_vector)
+{
+    entity->position += penetration_vector;
+
+    // only zero tangent velocity if the entity is actually trying
+    // to move into the shape.
+    // This is necessary because we're not doing continuous collision
+    // detection, so entities can sometimes clip corners and stop dead.
+    f32 vdp = glm::dot(entity->velocity, penetration_vector);
+    if (vdp < 0.0) {
+        glm::vec3 tangent_vec(-penetration_vector.y, penetration_vector.x, 0);
+        tangent_vec = glm::normalize(tangent_vec);
+        entity->velocity =
+          glm::dot(entity->velocity, tangent_vec) * tangent_vec;
+    }
+
+    // if we collide below then change to ground state
+    if (penetration_vector.y > 0) {
+        entity->state_flags =
+          entity->state_flags &
+          (~(entity::STATE_JUMPING | entity::STATE_FALLING));
+        entity->state_flags |= entity::STATE_ON_LAND;
+    }
+}
+
 void
 resolve_stage_collisions(WorldChunk* world_chunk,
                          ColliderSet* stage_colliders,
@@ -42,25 +67,7 @@ resolve_stage_collisions(WorldChunk* world_chunk,
                     if (stage_collider->center.y > collider.center.y) {
                         collision_result.penetration_vector.y *= -1;
                     }
-                    entity->position += collision_result.penetration_vector;
-
-                    glm::vec3 tangent_vec(
-                      -collision_result.penetration_vector.y,
-                      collision_result.penetration_vector.x,
-                      0);
-                    if (tangent_vec.x != 0 || tangent_vec.y != 0) {
-                        tangent_vec = glm::normalize(tangent_vec);
-                        entity->velocity =
-                          glm::dot(entity->velocity, tangent_vec) * tangent_vec;
-                    }
-
-                    // TODO: here is where we would set entity on ground state
-                    if (collision_result.penetration_vector.y > 0) {
-                        entity->state_flags =
-                          entity->state_flags &
-                          (~(entity::STATE_JUMPING | entity::STATE_FALLING));
-                        entity->state_flags |= entity::STATE_ON_LAND;
-                    }
+                    handle_entity_collision(entity, collision_result.penetration_vector);
                     stage_collider->is_colliding = true;
                 } else {
                     stage_collider->is_colliding = false;
@@ -68,26 +75,22 @@ resolve_stage_collisions(WorldChunk* world_chunk,
             }
 
             // TODO
-            // for (int t = 0; t < stage_colliders->n_tris; t++) {
-            // memory.scratch_arena.reinit();
-            // auto stage_collider = &stage_colliders->tris[t];
-            //
-            // phys::CollisionResult collision_result =
-            // phys::sat_collision_check(&memory.scratch_arena, &collider,
-            // stage_collider,
-            // entity.velocity * (float)dt,
-            // glm::vec3(0, 0, 0));
-            // if (collision_result.time_to_collision >= 0) {
-            // level_adjustment += collision_result.penetration_vector;
-            //
-            // std::cout << "Tri collision wooooo" << std::endl;
-            // std::cout << collision_result.time_to_collision << std::endl;
-            // std::cout << collision_result.penetration_vector.x << ","
-            //<< collision_result.penetration_vector.y << ","
-            //<< std::endl;
-            //}
-            //
-            //}
+             for (int t = 0; t < stage_colliders->n_tris; t++) {
+                 scratch_arena->reinit();
+                 auto stage_collider = stage_colliders->tris + t;
+                
+                 CollisionResult collision_result =
+                    sat_collision_check(scratch_arena, 
+                                        &collider,
+                                        stage_collider,
+                                        entity->velocity,
+                                        glm::vec3(0, 0, 0));
+
+
+                 if (collision_result.time_to_collision >= 0) {
+                     handle_entity_collision(entity, collision_result.penetration_vector);
+                }
+            }
         }
     }
 }
