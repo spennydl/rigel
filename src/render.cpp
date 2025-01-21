@@ -311,6 +311,58 @@ render_quad(Quad& quad, Viewport& vp, int r, int g, int b)
     glBindVertexArray(0);
 }
 
+Tri::Tri(glm::vec3 v1, glm::vec3 v2, glm::vec3 v3, Shader shader)
+  : shader(shader)
+{
+
+    verts[0] = v1;
+    verts[1] = v2;
+    verts[2] = v3;
+    usize idxs[3] = { 0, 1, 2 };
+
+    GLuint vbo;
+    glGenBuffers(1, &vbo);
+    GLuint ebo;
+    glGenBuffers(1, &ebo);
+
+    glGenVertexArrays(1, &this->vao);
+    glBindVertexArray(this->vao);
+
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_STATIC_DRAW);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+    glBufferData(
+      GL_ELEMENT_ARRAY_BUFFER, sizeof(idxs), idxs, GL_STATIC_DRAW);
+
+    glVertexAttribPointer(
+      0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+
+    glBindVertexArray(0);
+}
+
+void
+render_tri(Tri& tri, Viewport& vp, int r, int g, int b)
+{
+    auto screen_transform = vp.get_screen_transform();
+
+    glUseProgram(tri.shader.id);
+    glUniformMatrix4fv(glGetUniformLocation(tri.shader.id, "screen"),
+                       1,
+                       false,
+                       glm::value_ptr(screen_transform));
+    glUniform4f(glGetUniformLocation(tri.shader.id, "color"),
+                (float)r / 255.0,
+                (float)g / 255.0,
+                (float)b / 255.0,
+                1.0);
+
+    glBindVertexArray(tri.vao);
+    glDrawElements(GL_TRIANGLES, 3, GL_UNSIGNED_INT, 0);
+    glBindVertexArray(0);
+}
+
 void
 Viewport::translate(glm::vec3 by)
 {

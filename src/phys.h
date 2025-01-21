@@ -20,7 +20,7 @@ resolve_stage_collisions(WorldChunk* world_chunk,
                          mem::Arena* scratch_arena);
 
 void
-integrate_entity_positions(WorldChunk* world_chunk, float dt);
+integrate_entity_positions(WorldChunk* world_chunk, float dt, mem::Arena* scratch_arena);
 } // namespace phys
 } // namespace rigel
 

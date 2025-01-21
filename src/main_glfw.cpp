@@ -63,7 +63,7 @@ initialize_game_memory()
     memory.ephemeral_arena.arena_bytes = memory.ephemeral_storage_size;
     memory.ephemeral_arena.mem_begin = memory.ephemeral_storage;
 
-    memory.stage_arena = memory.ephemeral_arena.alloc_sub_arena(1024);
+    memory.stage_arena = memory.ephemeral_arena.alloc_sub_arena(2*1024);
     memory.colliders_arena = memory.ephemeral_arena.alloc_sub_arena(1024);
     memory.scratch_arena = memory.ephemeral_arena.alloc_sub_arena(1024);
 
@@ -214,22 +214,24 @@ main()
     glfwMakeContextCurrent(window);
     gladLoadGL(glfwGetProcAddress);
     glfwSwapInterval(1); // vsync
+    std::cout << "tris are " << sizeof(CollisionTri) << " bytes with alignment " << alignof(CollisionTri) << std::endl;
+    std::cout << "aabbs are " << sizeof(AABB) << " bytes with alignment " << alignof(AABB) << std::endl;
 
     mem::GameMem memory = initialize_game_memory();
     rigel::GameState* game_state = initialize_game_state(memory);
-    game_state->active_world_chunk = load_world_chunk(memory, "obj.tmx");
+    game_state->active_world_chunk = load_world_chunk(memory, "simplelevel.tmx");
 
     render::SpriteAtlas* sprite_atlas =
       memory.ephemeral_arena.alloc_obj<render::SpriteAtlas>();
     int w, h, channels;
-    auto image_data = stbi_load("testpersonsprite.png", &w, &h, &channels, 4);
+    auto image_data = stbi_load("astro2.png", &w, &h, &channels, 4);
     assert(image_data && "image data didn't load");
     auto res_id = sprite_atlas->load_sprite(1, w, h, image_data);
 
-    Rectangle player_collider = { .x = 0, .y = 0, .w = 16, .h = 16 };
+    Rectangle player_collider = { .x = 0, .y = 0, .w = 8, .h = 8 };
     auto world_chunk = game_state->active_world_chunk;
     world_chunk->add_player(
-      memory, res_id, glm::vec3(80, 32, 0), player_collider);
+      memory, res_id, glm::vec3(40, 32, 0), player_collider);
 
     std::ifstream spritevs("vs_sprite.glsl");
     auto sprite_vsrc = slurp(spritevs);
@@ -247,6 +249,12 @@ main()
     auto fs_src = slurp(fs);
     render::Shader shader(vs_src, fs_src);
 
+    std::ifstream vs_tri("vs_tri.glsl");
+    auto vs_tri_src = slurp(vs_tri);
+    std::ifstream fs_tri("fs_tri.glsl");
+    auto fs_tri_src = slurp(fs_tri);
+    render::Shader tri_shader(vs_tri_src, fs_tri_src);
+
     // TODO: renderingggggggggggggggggg
     std::vector<render::Quad> render_quads;
     // This is bad, but it shouldn't be our access pattern.
@@ -254,17 +262,19 @@ main()
     auto collider_set = stage->colliders.aabbs;
     auto n_colliders = stage->colliders.n_aabbs;
 
-    stage->colliders.n_tris = 1;
-    stage->colliders.tris = memory.colliders_arena.alloc_array<CollisionTri>(1);
-    stage->colliders.tris[0].vertices[0] = glm::vec3(128, 32, 0);
-    stage->colliders.tris[0].vertices[1] = glm::vec3(176, 48, 0);
-    stage->colliders.tris[0].vertices[2] = glm::vec3(176, 32, 0);
-
     render_quads.reserve(n_colliders);
     for (int i = 0; i < n_colliders; i++) {
         auto& quad = collider_set[i];
         render_quads.push_back(
           render::Quad(rect_from_aabb(quad), shader));
+    }
+
+    std::vector<render::Tri> render_tris;
+    render_tris.reserve(stage->colliders.n_tris);
+    for (int i = 0; i < stage->colliders.n_tris; i++) {
+        auto& tri = stage->colliders.tris[i];
+        render_tris.push_back(
+            render::Tri(tri.vertices[0], tri.vertices[1], tri.vertices[2], tri_shader));
     }
 
     double target_spf = 1.0 / 60.0;
@@ -275,22 +285,28 @@ main()
 
     render::Viewport viewport;
     render::VectorRenderer vector_renderer;
-    viewport.zoom(2.0);
+    viewport.zoom(3.0);
     auto player = &world_chunk->entities[0];
+    render::Quad player_quad(rect_from_aabb(player->colliders->aabbs[0]), shader);
+    player->state_flags = player->state_flags | entity::STATE_FALLING;
 
     while (!glfwWindowShouldClose(window)) {
         double frame_start = glfwGetTime();
         dt = frame_start - last_frame_start;
 
-        KeyInputListener::new_frame();
-
-        glfwPollEvents();
 
         if (KeyInputListener::should_close) {
             glfwSetWindowShouldClose(window, GLFW_TRUE);
         }
 
         // player brain
+        // update end here
+
+        if (render_dt >= target_spf) {
+
+        KeyInputListener::new_frame();
+
+        glfwPollEvents();
         {
             // TODO:
             auto player = &world_chunk->entities[0];
@@ -310,22 +326,19 @@ main()
             }
 
             if (KeyInputListener::input_actions[ACTION_UP] == INPUT_PRESS) {
-                if (!(player->state_flags & entity::STATE_JUMPING)) {
+                //if (!(player->state_flags & entity::STATE_JUMPING)) {
                     // TODO we need to manually give a velocity kick here
+                    std::cout << "JUMP" << std::endl;
                     player->velocity.y += rigel::PLAYER_JUMP;
                     // TODO: gotta encapsulate these state changes somewhere
                     player->state_flags |= entity::STATE_JUMPING;
                     player->state_flags = player->state_flags & (~entity::STATE_ON_LAND);
-                }
+                //}
             }
             // that's it, for now. Huh.
         }
 
-        phys::integrate_entity_positions(world_chunk, (float)dt);
-        phys::resolve_stage_collisions(world_chunk, &world_chunk->active_stage->colliders, &memory.scratch_arena);
-        // update end here
-
-        if (render_dt >= target_spf) {
+        phys::integrate_entity_positions(world_chunk, (float)render_dt, &memory.scratch_arena);
             // TODO: viewport stuff could be done only on resize
             int width, height;
             glfwGetFramebufferSize(window, &width, &height);
@@ -341,8 +354,25 @@ main()
                 }
             }
 
-            sprite_step.render_entities_in_world(
-              &viewport, game_state->active_world_chunk);
+            for (int q = 0; q < render_tris.size(); q++) {
+                if (stage->colliders.tris[q].is_colliding) {
+                    render::render_tri(render_tris[q], viewport, 0xff, 0x77, 0x88);
+                } else {
+                    render::render_tri(render_tris[q], viewport, 0x66, 0x77, 0x88);
+                }
+            }
+
+            auto player_rect = rect_from_aabb(player->colliders->aabbs[0]);
+            player_rect.x = player->position.x;
+            player_rect.y = player->position.y;
+            player_quad.dims = player_rect;
+            ubyte r = (player->state_flags & entity::STATE_ON_LAND) ? 0x89 : 0x18;
+            ubyte g = (player->state_flags & entity::STATE_JUMPING) ? 0x89 : 0x18;
+            ubyte b = (player->state_flags & entity::STATE_FALLING) ? 0x89 : 0x18;
+            render::render_quad(player_quad, viewport, r, g, b);
+
+            //sprite_step.render_entities_in_world(
+              //&viewport, game_state->active_world_chunk);
 
             glfwSwapBuffers(window);
 

@@ -112,6 +112,16 @@ struct Quad
     Quad(rigel::Rectangle rect, Shader shader);
 };
 
+struct Tri
+{
+    GLuint vao;
+    glm::vec3 verts[3];
+    Shader shader;
+
+    // Quad(Rectangle rect);
+    Tri(glm::vec3 v1, glm::vec3 v2, glm::vec3 v3, Shader shader);
+};
+
 struct RenderLine
 {
     glm::vec3 start;
@@ -146,6 +156,9 @@ class VectorRenderer
 
 void
 render_quad(Quad& quad, Viewport& viewport, int r, int g, int b);
+
+void
+render_tri(Tri& quad, Viewport& viewport, int r, int g, int b);
 
 //////////////////////////////////////////////////
 // TODO: we kinda gotta start from scratch here

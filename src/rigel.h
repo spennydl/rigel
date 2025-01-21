@@ -26,10 +26,10 @@ typedef float f32;
 typedef double f64;
 
 
-constexpr static f32 PLAYER_XACCEL = 1000.0f;
-constexpr static f32 GRAVITY       = -1200.0f;
-constexpr static f32 PLAYER_JUMP   = 800.0f;
-constexpr static f32 MAX_XSPEED    = 300.0f;
+constexpr static f32 PLAYER_XACCEL = 200.0f;
+constexpr static f32 GRAVITY       = -800.0f;
+constexpr static f32 PLAYER_JUMP   = 200.0f;
+constexpr static f32 MAX_XSPEED    = 200.0f;
 
 typedef int32_t EntityId;
 constexpr static EntityId ENTITY_ID_NONE = -1;

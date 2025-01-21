@@ -1,13 +1,12 @@
 #ifndef RIGEL_COLLIDER_H
 #define RIGEL_COLLIDER_H
 
-#include "rigel.h"
 #include "mem.h"
+#include "rigel.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
-namespace rigel
-{
+namespace rigel {
 struct Rectangle
 {
     int x;
@@ -126,6 +125,7 @@ rect_from_aabb(AABB aabb)
 struct CollisionTri
 {
     glm::vec3 vertices[3];
+    bool is_colliding;
 
     constexpr usize get_n_axes() { return 3; }
     void get_normals(glm::vec3* out)
@@ -165,14 +165,17 @@ struct ColliderSet
 
 struct CollisionResult
 {
-    // will be -1.0 if no collision will occur
-    f32 time_to_collision;
+    // depth along penetration axis
+    f32 depth;
+    // how much to move along y to get out
+    f32 vdist_to_out;
     // gives the direction of the collision
-    glm::vec3 penetration_vector;
+    glm::vec3 penetration_axis;
 
     CollisionResult()
-      : time_to_collision(-1.0)
-      , penetration_vector(0, 0, 0)
+      : depth(-1.0)
+      , vdist_to_out(0.0)
+      , penetration_axis(0, 0, 0)
     {
     }
 };
@@ -189,14 +192,20 @@ abs(float x)
     return x * signof(x);
 }
 
+CollisionResult
+collide_AABB_with_static_tri(AABB* aabb, CollisionTri* tri);
+CollisionResult
+collide_AABB_with_static_AABB(AABB* aabb, AABB* aabb_static);
+
+#if 0
 // TODO: specialize for AABB and AABB
 template<typename T, typename U>
 CollisionResult
 sat_collision_check(mem::Arena* scratch_arena,
                     T* first,
                     U* second,
-                    glm::vec3 first_velocity,
-                    glm::vec3 second_velocity)
+                    glm::vec3 first_displacement,
+                    glm::vec3 second_displacement)
 {
     usize n_axes_first = first->get_n_axes();
     usize n_axes_second = second->get_n_axes();
@@ -208,8 +217,8 @@ sat_collision_check(mem::Arena* scratch_arena,
     second->get_normals(normal_axes + n_axes_first);
 
     CollisionResult result;
-    float min_depth = INFINITY;
-    float time_to_collide = 0;
+    f32 min_depth = INFINITY;
+    f32 time_to_collide = -INFINITY;
     bool collision_is_in_future = false;
 
     for (usize i = 0; i < total_axes; i++) {
@@ -222,66 +231,47 @@ sat_collision_check(mem::Arena* scratch_arena,
         // AABB's since the axes returned by them will be the same.
 
         if (first_proj.y < second_proj.x || second_proj.y < first_proj.x) {
-            // we are not currently overlapping on this axis. Check to see if we
-            // will collide.
-            // std::cout << "norm: " << normal_axes[i].x << "," <<
-            // normal_axes[i].y << std::endl; std::cout << first_proj.y << ","
-            // << second_proj.x << std::endl; std::cout << second_proj.y << ","
-            // << first_proj.x << std::endl;
             return result;
 #if 0
-            // TODO: I don't understand why sweeping doesn't work.
-            float first_proj_vel = glm::dot(first_velocity, normal_axes[i]);
-            auto first_proj_future = first_proj + first_proj_vel;
-            float second_proj_vel = glm::dot(second_velocity, normal_axes[i]);
-            auto second_proj_future = second_proj + second_proj_vel;
-
-            // see if we cross during the movement
-
-            auto first_diff = first_proj.y - second_proj.x;
-            auto second_diff = second_proj.y - first_proj.x;
-            auto first_future_diff = first_proj_future.y - second_proj_future.x;
-            auto second_future_diff = second_proj_future.y - first_proj_future.x;
-            //std::cout << "first future: " << first_diff << " second future: " << second_diff << std::endl;
-            if (signof(first_diff) == signof(first_future_diff)
-                && signof(second_diff) == signof(second_future_diff)) {
-                std::cout << "first: " << first_diff << " " << first_future_diff << std::endl;
-                std::cout << "second: " << second_diff << " " << second_future_diff << std::endl;
-                // we do not cross on this axis during this movement.
-                if (collision_is_in_future) {
-                    //std::cout << "but we bailed" << std::endl;
-                }
+            // TODO: remove this continuous code if we don't need it
+            //
+            // for now we assume the second displacement is always 0
+            auto first_disp_proj = glm::dot(first_displacement, normal_axes[i]);
+            // auto second_disp_proj = glm::dot(second_displacement,
+            // normal_axes[i]);
+            auto first_future_proj = first_proj + first_disp_proj;
+            // auto second_future_proj = second_proj + second_disp_proj;
+            if (first_future_proj.y < second_proj.x ||
+                second_proj.y < first_future_proj.x) {
+                // we can fit this axis all the way thru the sweep
                 return result;
             }
-            // we will overlap at some time
             collision_is_in_future = true;
-            std::cout << "found one " << std::endl;
-            float diff;
-            if (signof(first_diff) != signof(first_future_diff)) {
-                diff = first_future_diff - first_diff;
-            } else {
-                diff = second_future_diff - second_diff;
-            }
-            //diff = diff / glm::length(relative_velocity);
-            std::cout << diff << std::endl;
 
-            if (diff > time_to_collide) {
-                time_to_collide = diff;
-                result.penetration_vector = normal_axes[i] * (1.0f - diff);
+            auto first_depth = first_future_proj.y - second_proj.x;
+            auto other_depth = second_proj.y - first_future_proj.x;
+            auto depth =
+              (other_depth < first_depth) ? other_depth : first_depth;
+            // TODO: this is wrong I think
+            auto time =
+              (abs(first_disp_proj) - abs(depth)) / abs(first_disp_proj);
+            if (time > time_to_collide) {
+                time_to_collide = time;
+                result.penetration_axis = normal_axes[i];
             }
+            continue;
 #endif
         }
 
-        // we are currently overlapping on this axis
-        // this is irrelevant if the collision is not happening right now
         if (!collision_is_in_future) {
-            float depth = first_proj.y - second_proj.x;
-            float other_depth = second_proj.y - first_proj.x;
+            // we are currently overlapping on this axis
+            auto depth = first_proj.y - second_proj.x;
+            auto other_depth = second_proj.y - first_proj.x;
             depth = (other_depth < depth) ? other_depth : depth;
 
             if (depth < min_depth) {
-                // std::cout << "depth " << depth << std::endl;
-                result.penetration_vector = normal_axes[i] * depth;
+                result.penetration_axis = normal_axes[i];
+
                 min_depth = depth;
             }
         }
@@ -289,12 +279,11 @@ sat_collision_check(mem::Arena* scratch_arena,
     // if we get here then we checked all axes and did not find one
     // that did not collide
     result.time_to_collision = time_to_collide;
+    result.depth = min_depth;
     return result;
 }
-
+#endif
 
 }
-
-
 
 #endif //

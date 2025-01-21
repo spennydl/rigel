@@ -4,6 +4,95 @@
 
 namespace rigel {
 
+// I dislike Tiled's xml format. At least it's gonna go
+// away when we have asset packing implemented.
+
+void load_aabb_colliders(Stage* stage, tinyxml2::XMLElement* root, mem::GameMem& mem)
+{
+    auto obj = root->FirstChildElement("object");
+
+    size_t n_objects = 0;
+    while (obj) {
+        n_objects++;
+        obj = obj->NextSiblingElement("object");
+    }
+    obj = root->FirstChildElement("object");
+
+    stage->colliders.n_aabbs = n_objects;
+    stage->colliders.aabbs =
+      mem.stage_arena.alloc_array<AABB>(n_objects);
+
+    auto colliders = &stage->colliders;
+    // load level colliders
+    int i = 0;
+    while (obj) {
+        auto aabb = &colliders->aabbs[i];
+
+        auto aabb_w_ex = obj->IntAttribute("width") / 2.0;
+        auto aabb_h_ex = obj->IntAttribute("height") / 2.0;
+        auto x = obj->IntAttribute("x");
+        auto y = stage->dimensions.h - obj->IntAttribute("y") - (aabb_h_ex * 2.0);
+
+        aabb->center = glm::vec3(x + aabb_w_ex, y + aabb_h_ex, 0);
+        aabb->extents = glm::vec3(aabb_w_ex, aabb_h_ex, 0);
+
+        obj = obj->NextSiblingElement("object");
+        i++;
+    }
+    std::cout << "loaded " << i << " AABBs" << std::endl;
+}
+
+void load_tri_colliders(Stage* stage, tinyxml2::XMLElement* root, mem::GameMem& mem)
+{
+    auto obj = root->FirstChildElement("object");
+
+    size_t n_objects = 0;
+    while (obj) {
+        n_objects++;
+        obj = obj->NextSiblingElement("object");
+    }
+    obj = root->FirstChildElement("object");
+    std::cout << "found " << n_objects << " tris";
+
+    stage->colliders.n_tris = n_objects;
+    stage->colliders.tris =
+      mem.stage_arena.alloc_array<CollisionTri>(n_objects);
+
+    auto colliders = &stage->colliders;
+    // load level colliders
+    int i = 0;
+    while (obj) {
+        auto tri = &colliders->tris[i];
+        auto xml_tri = obj->FirstChildElement("polygon");
+        f32 x = obj->FloatAttribute("x");
+        f32 y = obj->FloatAttribute("y");
+
+        char* offsets = (char*)xml_tri->Attribute("points");
+
+        for (int j = 0; j < 3; j++) {
+            char* end = offsets;
+            while (*end && *end != ',')
+                end++;
+
+            f32 x_off = strtod(offsets, &end);
+            offsets = end + 1;
+            while (*end && *end != ' ')
+                end++;
+
+            f32 y_off = strtod(offsets, &end);
+            offsets = end + 1;
+
+            tri->vertices[j].x = x + x_off;
+            tri->vertices[j].y = stage->dimensions.h - (y + y_off);
+            //std::cout << tri->vertices[j].x << "," << tri->vertices[j].y << std::endl;
+        }
+
+        obj = obj->NextSiblingElement("object");
+        i++;
+    }
+    std::cout << "loaded " << i << " tris" << std::endl;
+}
+
 auto
 load_level_data(mem::GameMem& mem,
                 WorldChunk* world_chunk,
@@ -20,50 +109,35 @@ load_level_data(mem::GameMem& mem,
     if (!map) {
         return;
     }
-    auto width = map->IntAttribute("width") * map->IntAttribute("tilewidth");
-    auto height = map->IntAttribute("height") * map->IntAttribute("tileheight");
-
-    // TODO: we now have layer names and attribute types in the xml
-    auto obj_group = map->FirstChildElement("objectgroup");
-    auto obj = obj_group->FirstChildElement("object");
-
-    size_t n_objects = 0;
-    while (obj) {
-        n_objects++;
-        obj = obj->NextSiblingElement("object");
-    }
-    obj = obj_group->FirstChildElement("object");
-
+    auto props = map->FirstChildElement("imagelayer")->FirstChildElement("image");
+    auto width = props->IntAttribute("width");
+    auto height = props->IntAttribute("height");
+    
     stage->dimensions.x = 0;
     stage->dimensions.y = 0;
     stage->dimensions.w = width;
     stage->dimensions.h = height;
-    stage->colliders.n_aabbs = n_objects;
-    stage->colliders.aabbs =
-      mem.stage_arena.alloc_array<AABB>(n_objects);
 
-    world_chunk->active_stage = stage;
+    auto obj_group = map->FirstChildElement("objectgroup");
+    auto group_name = obj_group->Attribute("name");
+    std::cout << group_name << std::endl;
 
-    auto colliders = &stage->colliders;
-    // load level colliders
-    int i = 0;
-    while (obj) {
-
-        auto aabb = &colliders->aabbs[i];
-
-        auto aabb_w_ex = obj->IntAttribute("width") / 2.0;
-        auto aabb_h_ex = obj->IntAttribute("height") / 2.0;
-        auto x = obj->IntAttribute("x");
-        auto y = height - obj->IntAttribute("y") - (aabb_h_ex * 2.0);
-
-        aabb->center = glm::vec3(x + aabb_w_ex, y + aabb_h_ex, 0);
-        aabb->extents = glm::vec3(aabb_w_ex, aabb_h_ex, 0);
-
-        obj = obj->NextSiblingElement("object");
-        i++;
+    if (strncmp(group_name, "AABB", 4) == 0) {
+        load_aabb_colliders(stage, obj_group, mem);
+    } else if (strncmp(group_name, "TRI", 3) == 0) {
+        load_tri_colliders(stage, obj_group, mem);
     }
 
-    // TODO: load entities!
+    obj_group = obj_group->NextSiblingElement("objectgroup");
+    group_name = obj_group->Attribute("name");
+    std::cout << group_name << std::endl;
+    if (strncmp(group_name, "AABB", 4) == 0) {
+        load_aabb_colliders(stage, obj_group, mem);
+    } else if (strncmp(group_name, "TRI", 4) == 0) {
+        load_tri_colliders(stage, obj_group, mem);
+    }
+
+    world_chunk->active_stage = stage;
 }
 
 WorldChunk*
