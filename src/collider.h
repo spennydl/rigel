@@ -154,6 +154,20 @@ struct CollisionTri
     }
 };
 
+enum ColliderType {
+    COLLIDER_NONE = 0,
+    COLLIDER_AABB,
+    COLLIDER_TRIANGLE
+};
+
+struct ColliderRef {
+    ColliderType type;
+    union {
+        AABB* aabb;
+        CollisionTri* tri;
+    };
+};
+
 struct ColliderSet
 {
     usize n_aabbs;
@@ -165,6 +179,7 @@ struct ColliderSet
 
 struct CollisionResult
 {
+    f32 t_to_collide;
     // depth along penetration axis
     f32 depth;
     // how much to move along y to get out
@@ -193,9 +208,15 @@ abs(float x)
 }
 
 CollisionResult
-collide_AABB_with_static_tri(AABB* aabb, CollisionTri* tri);
+collide_AABB_with_static_tri(AABB* aabb, glm::vec3 displacement, CollisionTri* tri);
 CollisionResult
 collide_AABB_with_static_AABB(AABB* aabb, AABB* aabb_static);
+CollisionResult
+collide_AABB_with_static_AABB2(AABB* aabb, AABB* aabb_static, glm::vec3 displacement);
+f32
+ray_intersect_AABB(AABB* aabb, glm::vec3 ray_origin, glm::vec3 ray_dir);
+f32
+ray_intersect_tri(CollisionTri* tri, glm::vec3 ray_origin, glm::vec3 ray_dir);
 
 #if 0
 // TODO: specialize for AABB and AABB

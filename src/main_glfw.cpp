@@ -228,10 +228,10 @@ main()
     assert(image_data && "image data didn't load");
     auto res_id = sprite_atlas->load_sprite(1, w, h, image_data);
 
-    Rectangle player_collider = { .x = 0, .y = 0, .w = 8, .h = 8 };
+    Rectangle player_collider = { .x = 0, .y = 0, .w = 9, .h = 19 };
     auto world_chunk = game_state->active_world_chunk;
     world_chunk->add_player(
-      memory, res_id, glm::vec3(40, 32, 0), player_collider);
+      memory, res_id, glm::vec3(40, 96, 0), player_collider);
 
     std::ifstream spritevs("vs_sprite.glsl");
     auto sprite_vsrc = slurp(spritevs);
@@ -285,10 +285,14 @@ main()
 
     render::Viewport viewport;
     render::VectorRenderer vector_renderer;
+
+    auto raycast_line = vector_renderer.add_line(render::RenderLine{});
+
     viewport.zoom(3.0);
     auto player = &world_chunk->entities[0];
     render::Quad player_quad(rect_from_aabb(player->colliders->aabbs[0]), shader);
     player->state_flags = player->state_flags | entity::STATE_FALLING;
+
 
     while (!glfwWindowShouldClose(window)) {
         double frame_start = glfwGetTime();
@@ -346,6 +350,25 @@ main()
 
             glClear(GL_COLOR_BUFFER_BIT);
 
+            #if 0
+            f32 t;
+            auto closest_collider = phys::get_closest_collider_along_ray(&world_chunk->active_stage->colliders, player->position, glm::vec3(0, -1, 0), &t);
+            if (t < INFINITY) {
+                render::RenderLine line;
+                if (closest_collider.type == COLLIDER_AABB) {
+                    closest_collider.aabb->is_colliding = true;
+                } else if (closest_collider.type == COLLIDER_TRIANGLE) {
+                    closest_collider.tri->is_colliding = true;
+                }
+                line.start = player->position;
+                line.start_color = glm::vec3(0xff, 0x00, 0x00);
+                line.end = player->position + glm::vec3(0, -t, 0);
+                line.end_color = glm::vec3(0xff, 0x00, 0x00);
+                vector_renderer.update_line(raycast_line, line);
+            }
+            vector_renderer.render(viewport);
+            #endif
+
             for (int q = 0; q < render_quads.size(); q++) {
                 if (stage->colliders.aabbs[q].is_colliding) {
                     render::render_quad(render_quads[q], viewport, 0xff, 0x77, 0x88);
@@ -370,6 +393,7 @@ main()
             ubyte g = (player->state_flags & entity::STATE_JUMPING) ? 0x89 : 0x18;
             ubyte b = (player->state_flags & entity::STATE_FALLING) ? 0x89 : 0x18;
             render::render_quad(player_quad, viewport, r, g, b);
+
 
             //sprite_step.render_entities_in_world(
               //&viewport, game_state->active_world_chunk);

@@ -14,10 +14,9 @@
 namespace rigel {
 namespace phys {
 
-void
-resolve_stage_collisions(WorldChunk* world_chunk,
-                         ColliderSet* stage_colliders,
-                         mem::Arena* scratch_arena);
+// TODO: this should be in collider.h, no?
+ColliderRef
+get_closest_collider_along_ray(ColliderSet* stage_colliders, glm::vec3 origin, glm::vec3 direction, f32* out_t);
 
 void
 integrate_entity_positions(WorldChunk* world_chunk, float dt, mem::Arena* scratch_arena);
