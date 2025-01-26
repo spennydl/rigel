@@ -168,6 +168,14 @@ struct ColliderRef {
     };
 };
 
+inline bool collider_ref_eq(ColliderRef& lhs, ColliderRef& rhs)
+{
+    if (lhs.type != rhs.type) {
+        return false;
+    }
+    return (lhs.type == COLLIDER_AABB) ? lhs.aabb == rhs.aabb : lhs.tri == rhs.tri;
+}
+
 struct ColliderSet
 {
     usize n_aabbs;
@@ -177,6 +185,19 @@ struct ColliderSet
     CollisionTri* tris;
 };
 
+struct ColliderRaycastResult {
+    // t value on ray where collision happens
+    f32 t;
+    // edge we hit
+    glm::vec3 edge[2];
+
+    ColliderRaycastResult()
+    : t(0)
+    , edge{glm::vec3(0), glm::vec3(0)}
+    {}
+};
+
+// TODO: do we need all of these fields?
 struct CollisionResult
 {
     f32 t_to_collide;
@@ -186,11 +207,15 @@ struct CollisionResult
     f32 vdist_to_out;
     // gives the direction of the collision
     glm::vec3 penetration_axis;
+    // the edge on which we have collided
+    glm::vec3 edge[2];
 
     CollisionResult()
-      : depth(-1.0)
+      : t_to_collide(-1.0)
+      , depth(-1.0)
       , vdist_to_out(0.0)
       , penetration_axis(0, 0, 0)
+      , edge{glm::vec3(0), glm::vec3(0)}
     {
     }
 };
@@ -212,10 +237,12 @@ collide_AABB_with_static_tri(AABB* aabb, glm::vec3 displacement, CollisionTri* t
 CollisionResult
 collide_AABB_with_static_AABB(AABB* aabb, AABB* aabb_static);
 CollisionResult
+collide_AABB_with_static_AABB(AABB* aabb, AABB* aabb_static, glm::vec3 displacement);
+CollisionResult
 collide_AABB_with_static_AABB2(AABB* aabb, AABB* aabb_static, glm::vec3 displacement);
-f32
+ColliderRaycastResult
 ray_intersect_AABB(AABB* aabb, glm::vec3 ray_origin, glm::vec3 ray_dir);
-f32
+ColliderRaycastResult
 ray_intersect_tri(CollisionTri* tri, glm::vec3 ray_origin, glm::vec3 ray_dir);
 
 #if 0

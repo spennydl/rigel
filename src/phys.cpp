@@ -6,32 +6,27 @@ namespace rigel {
 namespace phys {
 
 
-ColliderRef
-get_closest_collider_along_ray(ColliderSet* stage_colliders, glm::vec3 origin, glm::vec3 direction, f32* out_t)
+ColliderRaycastResult
+get_closest_collider_along_ray(ColliderSet* stage_colliders, glm::vec3 origin, glm::vec3 direction)
 {
-    ColliderRef result;
+    ColliderRaycastResult result;
     f32 min_t = INFINITY;
     for (usize i = 0; i < stage_colliders->n_aabbs; i++) {
-       f32 t = ray_intersect_AABB(&stage_colliders->aabbs[i], origin, direction);
-       //if (t >= 0 && t <= 1) {
-           if (t >= 0 && t < min_t) {
-               min_t = t;
-               result.type = COLLIDER_AABB;
-               result.aabb = &stage_colliders->aabbs[i];
-           }
-       //}
-    }
-
-    for (usize i = 0; i < stage_colliders->n_tris; i++) {
-        f32 t = ray_intersect_tri(&stage_colliders->tris[i], origin, direction);
-        if (t >= 0 && t < min_t) {
-            min_t = t;
-            result.type = COLLIDER_TRIANGLE;
-            result.tri = &stage_colliders->tris[i];
+        auto r = ray_intersect_AABB(&stage_colliders->aabbs[i], origin, direction);
+        if (r.t >= 0 && r.t < min_t) {
+            min_t = r.t;
+            result = r;
         }
     }
 
-    *out_t = min_t;
+    for (usize i = 0; i < stage_colliders->n_tris; i++) {
+        auto r = ray_intersect_tri(&stage_colliders->tris[i], origin, direction);
+        if (r.t >= 0 && r.t < min_t) {
+            min_t = r.t;
+            result = r;
+        }
+    }
+
     return result;
 }
 
@@ -46,32 +41,27 @@ place_entity_on_ground(entity::Entity* entity, ColliderSet* stage_colliders)
     glm::vec3 center = collider.center;
     glm::vec3 down_dir(0, -1, 0);
 
-    f32 displacement = INFINITY;
-    f32 disp_left = INFINITY;
-    f32 disp_right = INFINITY;
-    f32 disp_center = INFINITY;
+    auto closest_left = get_closest_collider_along_ray(stage_colliders, left, down_dir);
+    auto closest_right = get_closest_collider_along_ray(stage_colliders, right, down_dir);
+    auto closest_center = get_closest_collider_along_ray(stage_colliders, center, down_dir);
 
-    auto closest_left = get_closest_collider_along_ray(stage_colliders, left, down_dir, &disp_left);
-    auto closest_right = get_closest_collider_along_ray(stage_colliders, right, down_dir, &disp_right);
-    auto closest_center = get_closest_collider_along_ray(stage_colliders, center, down_dir, &disp_center);
-    //std::cout << disp_left << " -- " << disp_right << std::endl;
-
-    displacement = disp_left;
-    ColliderRef closest = closest_left;
-    if (disp_right < displacement) {
-        displacement = disp_right;
+    auto closest = closest_left;
+    if (closest_right.t < closest.t) {
         closest = closest_right;
     }
-    if (disp_center < displacement) {
-        displacement = disp_center;
+    if (closest_center.t < closest.t) {
         closest = closest_center;
     }
 
-    //std::cout << "try to snap down by " << displacement << std::endl;
-    if (displacement < (2 * collider.extents.y)) {
-        entity->position.y -= (displacement - collider.extents.y - 1); // snap to one pixel above the ground
-    } else if ((displacement > 2 * collider.extents.y) || displacement == INFINITY){
-        std::cout << "couldn't find becuase displacment was " << displacement << std::endl;
+
+    if (closest.t < (2 * collider.extents.y)) {
+        // snap to a pixel above
+        entity->position.y -= (closest.t - collider.extents.y - 1);
+        // project velocity along the edge
+        auto edge_vec = glm::normalize(closest.edge[1] - closest.edge[0]);
+        entity->velocity =
+            glm::dot(entity->velocity, edge_vec) * edge_vec;
+    } else if ((closest.t > 2 * collider.extents.y) || closest.t == INFINITY){
         entity->state_flags = entity->state_flags & ~(entity::STATE_ON_LAND);
         entity->state_flags = entity->state_flags | entity::STATE_FALLING;
     }
@@ -82,7 +72,6 @@ collide_entity_with_stage(entity::Entity* entity, ColliderSet* stage_colliders, 
 {
     glm::vec3 displacement = new_pos - entity->position;
     f32 dtdt = dt * dt;
-    bool entity_has_collided_with_ground = false;
     auto entity_colliders = entity->colliders;
     for (usize ec = 0; ec < entity_colliders->n_aabbs; ec++) {
         auto collider = entity_colliders->aabbs[ec];
@@ -91,24 +80,17 @@ collide_entity_with_stage(entity::Entity* entity, ColliderSet* stage_colliders, 
         for (usize sc = 0; sc < stage_colliders->n_aabbs; sc++) {
             auto stage_collider = stage_colliders->aabbs + sc;
             CollisionResult collision_result =
-                collide_AABB_with_static_AABB2(&collider, stage_collider, displacement);
+                collide_AABB_with_static_AABB(&collider, stage_collider, displacement);
 
             if (collision_result.t_to_collide >= 0) {
                 if (collision_result.t_to_collide > 0) {
-                    std::cout << "AABB COLLIDE LATER " << collision_result.t_to_collide << std::endl;
-                    auto correction = collision_result.t_to_collide * 0.1f;
-                    entity->position += (collision_result.t_to_collide - correction) * displacement;
-                    std::cout << collision_result.penetration_axis.x << "," << collision_result.penetration_axis.y << std::endl;
+                    f32 buffertime = collision_result.t_to_collide / glm::length(displacement);
+                    entity->position += (collision_result.t_to_collide - buffertime) * displacement;
                 } else {
-                    std::cout << "AABB COLLIDE NOW " << collision_result.t_to_collide << std::endl;
                     entity->position += collision_result.penetration_axis *
-                                        collision_result.depth;
-                    std::cout << collision_result.penetration_axis.x << "," << collision_result.penetration_axis.y << std::endl;
+                                        (collision_result.depth + 1);
                 }
 
-                if (collision_result.penetration_axis.y > 0) {
-                    entity_has_collided_with_ground = true;
-                }
                 if ((entity->state_flags & entity::STATE_FALLING) &&
                     collision_result.penetration_axis.y > 0) {
                     entity->state_flags =
@@ -118,11 +100,9 @@ collide_entity_with_stage(entity::Entity* entity, ColliderSet* stage_colliders, 
                     entity->velocity.y = 0;
                     entity->acceleration.y = 0;
                 } else {
-                    glm::vec3 tangent(-collision_result.penetration_axis.y,
-                                        collision_result.penetration_axis.x,
-                                        0);
+                    auto slope_v = glm::normalize(collision_result.edge[1] - collision_result.edge[0]);
                     entity->velocity =
-                        glm::dot(entity->velocity, tangent) * tangent;
+                        glm::dot(entity->velocity, slope_v) * slope_v;
                 }
                 displacement = (entity->velocity * dt) +
                             (0.5f * entity->acceleration * dtdt);
@@ -144,18 +124,12 @@ collide_entity_with_stage(entity::Entity* entity, ColliderSet* stage_colliders, 
             if (collision_result.t_to_collide >= 0) {
                 // collide in the future!
                 if (collision_result.t_to_collide > 0) {
-                    std::cout << "TRI COLLIDE LATER" << std::endl;
-                    std::cout << collision_result.penetration_axis.x << ","
-                        << collision_result.penetration_axis.y << std::endl;
-                    entity->position += collision_result.t_to_collide * displacement;
+                    f32 buffertime = collision_result.t_to_collide / glm::length(displacement);
+                    entity->position += (collision_result.t_to_collide - buffertime) * displacement;
                 } else {
-                    std::cout << "TRI COLLIDE NOW" << std::endl;
-                    entity->position.y += collision_result.vdist_to_out;
+                    entity->position.y += collision_result.vdist_to_out + 1;
                 }
 
-                if (collision_result.penetration_axis.y > 0) {
-                    entity_has_collided_with_ground = true;
-                }
                 if ((entity->state_flags & entity::STATE_FALLING) &&
                     collision_result.penetration_axis.y > 0) {
                     entity->state_flags =
@@ -165,11 +139,9 @@ collide_entity_with_stage(entity::Entity* entity, ColliderSet* stage_colliders, 
                     entity->velocity.y = 0;
                     entity->acceleration.y = 0;
                 } else {
-                    glm::vec3 tangent(collision_result.penetration_axis.y,
-                                        -collision_result.penetration_axis.x,
-                                        0);
+                    auto slope_v = glm::normalize(collision_result.edge[1] - collision_result.edge[0]);
                     entity->velocity =
-                        glm::dot(entity->velocity, tangent) * tangent;
+                        glm::dot(entity->velocity, slope_v) * slope_v;
                 }
 
                 displacement = (entity->velocity * dt) +
@@ -239,10 +211,6 @@ integrate_entity_positions(WorldChunk* world_chunk,
         entity->velocity = new_velocity;
         entity->acceleration = new_accel;
     }
-    //resolve_stage_collisions(
-      //world_chunk, &world_chunk->active_stage->colliders, scratch_arena);
-    //auto player = world_chunk->entities;
-    //std::cout << player->position.x << "," << player->position.y << std::endl;
 }
 
 }
