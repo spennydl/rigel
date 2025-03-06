@@ -1,9 +1,6 @@
 #ifndef ENTITY_H_
 #define ENTITY_H_
 
-#include <cmath>
-#include <utility>
-#include <vector>
 #include <glm/glm.hpp>
 
 #include "rigel.h"

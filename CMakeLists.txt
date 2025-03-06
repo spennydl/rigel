@@ -23,4 +23,4 @@ add_compile_options(-fdiagnostics-color)
 
 add_executable(rigel ${RIGEL_SOURCES})
 # TODO: link the libs properly
-target_link_libraries(rigel LINK_PRIVATE glfw glad stb_image tinyxml2 m)
+target_link_libraries(rigel LINK_PRIVATE SDL3::SDL3 glad stb_image tinyxml2 m)

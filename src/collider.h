@@ -7,12 +7,13 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 namespace rigel {
+
 struct Rectangle
 {
-    int x;
-    int y;
-    int w;
-    int h;
+    i32 x;
+    i32 y;
+    i32 w;
+    i32 h;
 
     glm::mat4 get_world_transform()
     {
@@ -185,153 +186,6 @@ struct ColliderSet
     CollisionTri* tris;
 };
 
-struct ColliderRaycastResult {
-    // t value on ray where collision happens
-    f32 t;
-    // edge we hit
-    glm::vec3 edge[2];
-
-    ColliderRaycastResult()
-    : t(0)
-    , edge{glm::vec3(0), glm::vec3(0)}
-    {}
-};
-
-// TODO: do we need all of these fields?
-struct CollisionResult
-{
-    f32 t_to_collide;
-    // depth along penetration axis
-    f32 depth;
-    // how much to move along y to get out
-    f32 vdist_to_out;
-    // gives the direction of the collision
-    glm::vec3 penetration_axis;
-    // the edge on which we have collided
-    glm::vec3 edge[2];
-
-    CollisionResult()
-      : t_to_collide(-1.0)
-      , depth(-1.0)
-      , vdist_to_out(0.0)
-      , penetration_axis(0, 0, 0)
-      , edge{glm::vec3(0), glm::vec3(0)}
-    {
-    }
-};
-
-inline float
-signof(float x)
-{
-    return (x >= 0) ? 1.0 : -1.0;
 }
 
-inline float
-abs(float x)
-{
-    return x * signof(x);
-}
-
-CollisionResult
-collide_AABB_with_static_tri(AABB* aabb, glm::vec3 displacement, CollisionTri* tri);
-CollisionResult
-collide_AABB_with_static_AABB(AABB* aabb, AABB* aabb_static);
-CollisionResult
-collide_AABB_with_static_AABB(AABB* aabb, AABB* aabb_static, glm::vec3 displacement);
-CollisionResult
-collide_AABB_with_static_AABB2(AABB* aabb, AABB* aabb_static, glm::vec3 displacement);
-ColliderRaycastResult
-ray_intersect_AABB(AABB* aabb, glm::vec3 ray_origin, glm::vec3 ray_dir);
-ColliderRaycastResult
-ray_intersect_tri(CollisionTri* tri, glm::vec3 ray_origin, glm::vec3 ray_dir);
-
-#if 0
-// TODO: specialize for AABB and AABB
-template<typename T, typename U>
-CollisionResult
-sat_collision_check(mem::Arena* scratch_arena,
-                    T* first,
-                    U* second,
-                    glm::vec3 first_displacement,
-                    glm::vec3 second_displacement)
-{
-    usize n_axes_first = first->get_n_axes();
-    usize n_axes_second = second->get_n_axes();
-    usize total_axes = n_axes_first + n_axes_second;
-
-    // assume these are normalized!
-    glm::vec3* normal_axes = scratch_arena->alloc_array<glm::vec3>(total_axes);
-    first->get_normals(normal_axes);
-    second->get_normals(normal_axes + n_axes_first);
-
-    CollisionResult result;
-    f32 min_depth = INFINITY;
-    f32 time_to_collide = -INFINITY;
-    bool collision_is_in_future = false;
-
-    for (usize i = 0; i < total_axes; i++) {
-        // should be a vector of min (x) & max (y) projections onto the normal
-        // axis
-        glm::vec2 first_proj = first->project_to(normal_axes[i]);
-        glm::vec2 second_proj = second->project_to(normal_axes[i]);
-
-        // We are doing too much work though, especially in the case of two
-        // AABB's since the axes returned by them will be the same.
-
-        if (first_proj.y < second_proj.x || second_proj.y < first_proj.x) {
-            return result;
-#if 0
-            // TODO: remove this continuous code if we don't need it
-            //
-            // for now we assume the second displacement is always 0
-            auto first_disp_proj = glm::dot(first_displacement, normal_axes[i]);
-            // auto second_disp_proj = glm::dot(second_displacement,
-            // normal_axes[i]);
-            auto first_future_proj = first_proj + first_disp_proj;
-            // auto second_future_proj = second_proj + second_disp_proj;
-            if (first_future_proj.y < second_proj.x ||
-                second_proj.y < first_future_proj.x) {
-                // we can fit this axis all the way thru the sweep
-                return result;
-            }
-            collision_is_in_future = true;
-
-            auto first_depth = first_future_proj.y - second_proj.x;
-            auto other_depth = second_proj.y - first_future_proj.x;
-            auto depth =
-              (other_depth < first_depth) ? other_depth : first_depth;
-            // TODO: this is wrong I think
-            auto time =
-              (abs(first_disp_proj) - abs(depth)) / abs(first_disp_proj);
-            if (time > time_to_collide) {
-                time_to_collide = time;
-                result.penetration_axis = normal_axes[i];
-            }
-            continue;
-#endif
-        }
-
-        if (!collision_is_in_future) {
-            // we are currently overlapping on this axis
-            auto depth = first_proj.y - second_proj.x;
-            auto other_depth = second_proj.y - first_proj.x;
-            depth = (other_depth < depth) ? other_depth : depth;
-
-            if (depth < min_depth) {
-                result.penetration_axis = normal_axes[i];
-
-                min_depth = depth;
-            }
-        }
-    }
-    // if we get here then we checked all axes and did not find one
-    // that did not collide
-    result.time_to_collision = time_to_collide;
-    result.depth = min_depth;
-    return result;
-}
-#endif
-
-}
-
-#endif //
+#endif // RIGEL_COLLIDER_H

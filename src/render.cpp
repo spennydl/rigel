@@ -1,17 +1,16 @@
-#include "collider.h"
 #include "render.h"
 #include "world.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <glad/gl.h>
+
+// TODO: remove
+#include <string>
 #include <iostream>
-#include <vector>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
-// TODO: Prolly don't need this, hey?
-#define STB_IMAGE_WRITE_IMPLEMENTATION
-#include "stb_image_write.h"
 
 namespace rigel {
 namespace render {
@@ -41,12 +40,12 @@ check_shader_status(GLuint id, bool prog)
 Shader::Shader() {}
 
 void
-Shader::load_from_src(const std::string& vs_src, const std::string& fs_src)
+Shader::load_from_src(const char* vs_src, const char* fs_src)
 {
     GLuint vs, fs;
     vs = glCreateShader(GL_VERTEX_SHADER);
-    auto vs_csrc = vs_src.c_str();
-    glShaderSource(vs, 1, &vs_csrc, nullptr);
+
+    glShaderSource(vs, 1, &vs_src, nullptr);
     glCompileShader(vs);
     if (!check_shader_status(vs)) {
         std::cerr << "vertex failed" << std::endl;
@@ -54,8 +53,7 @@ Shader::load_from_src(const std::string& vs_src, const std::string& fs_src)
     }
 
     fs = glCreateShader(GL_FRAGMENT_SHADER);
-    auto fs_csrc = fs_src.c_str();
-    glShaderSource(fs, 1, &fs_csrc, nullptr);
+    glShaderSource(fs, 1, &fs_src, nullptr);
     glCompileShader(fs);
     if (!check_shader_status(fs)) {
         std::cerr << "frag failed" << std::endl;
@@ -71,54 +69,16 @@ Shader::load_from_src(const std::string& vs_src, const std::string& fs_src)
     }
 }
 
-Shader::Shader(const std::string& vs_src, const std::string& fs_src)
+Shader::Shader(const char* vs_src, const char* fs_src)
 {
     load_from_src(vs_src, fs_src);
 }
 
-Texture::Texture(const std::string& path)
+// TODO: change path to just accept data
+SpriteAtlas::SpriteAtlas(ImageResource image)
 {
-    int w, h, channels;
-
-    auto image_data = stbi_load(path.c_str(), &w, &h, &channels, 3);
-    if (image_data == nullptr) {
-        std::cerr << "Couldn't load atlas texture" << std::endl;
-        return;
-    }
-
-    glGenTextures(1, &this->id);
-    glBindTexture(GL_TEXTURE_2D, this->id);
-    glTexParameteri(
-      GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexImage2D(GL_TEXTURE_2D,
-                 0,
-                 GL_RGBA,
-                 w,
-                 h,
-                 0,
-                 GL_RGBA,
-                 GL_UNSIGNED_BYTE,
-                 image_data);
-    glGenerateMipmap(GL_TEXTURE_2D);
-
-    stbi_image_free(image_data);
-}
-
-#if 0
-SpriteAtlas::SpriteAtlas(const std::string& path, int width, int height)
-{
-    int w, h, channels;
-
-    auto image_data = stbi_load(path.c_str(), &w, &h, &channels, 4);
-    channels = 4;
-    if (image_data == nullptr) {
-        std::cerr << "Couldn't load atlas texture" << std::endl;
-        return;
-    }
-
-    int tiles_in_row = w / width;
-    int tiles_in_col = h / height;
+    int tiles_in_row = image.width / 8;
+    int tiles_in_col = image.height / 8;
     this->tiles = tiles_in_row * tiles_in_col;
 
     glGenTextures(1, &this->id);
@@ -129,21 +89,19 @@ SpriteAtlas::SpriteAtlas(const std::string& path, int width, int height)
     glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAX_LEVEL, 1);
 
-    glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_RGBA8, width, height, this->tiles, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_RGBA8, 8, 8, this->tiles, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
 
     int zoffset = 0;
-    glPixelStorei(GL_UNPACK_ROW_LENGTH, w);
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, image.width);
     for (int y = 0; y < tiles_in_col; y++) {
         for (int x = 0; x < tiles_in_row; x++) {
-            glPixelStorei(GL_UNPACK_SKIP_PIXELS, x * width);
-            glPixelStorei(GL_UNPACK_SKIP_ROWS, y * height);
-            glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, zoffset++, width, height, 1, GL_RGBA, GL_UNSIGNED_BYTE, image_data);
+            glPixelStorei(GL_UNPACK_SKIP_PIXELS, x * 8);
+            glPixelStorei(GL_UNPACK_SKIP_ROWS, y * 8);
+            glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, zoffset++, 8, 8, 1, GL_RGBA, GL_UNSIGNED_BYTE, image.data);
         }
     }
 
     glGenerateMipmap(GL_TEXTURE_2D_ARRAY);
-
-    delete[] image_data;
 }
 
 unsigned char* unpack_sprite_atlas(const std::string& path, int width, int height, int* out_levels)
@@ -203,10 +161,10 @@ MapDrawLayer::MapDrawLayer(SpriteAtlas atlas, Shader prog)
     glBindVertexArray(this->vao);
 
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(quad), quad, GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(QUAD_VERTS), QUAD_VERTS, GL_STATIC_DRAW);
 
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(quad_idx), quad_idx, GL_STATIC_DRAW);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(QUAD_IDXS), QUAD_IDXS, GL_STATIC_DRAW);
 
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
@@ -216,18 +174,18 @@ MapDrawLayer::MapDrawLayer(SpriteAtlas atlas, Shader prog)
     glBindVertexArray(0);
 }
 
-void MapDrawLayer::buffer_map(const TileMap& tiles)
+void MapDrawLayer::buffer_map(const TileMap* tiles)
 {
     if (this->map_buf != 0) {
         std::cout << "rebuffering map!" << std::endl;
         return;
     }
 
-    int mapsize = tiles.width * tiles.height;
+    int mapsize = WORLD_SIZE_TILES;
 
     glGenBuffers(1, &this->map_buf);
     glBindBuffer(GL_TEXTURE_BUFFER, this->map_buf);
-    glBufferData(GL_TEXTURE_BUFFER, mapsize * sizeof(uint16_t), tiles.sprites, GL_STATIC_DRAW);
+    glBufferData(GL_TEXTURE_BUFFER, mapsize * sizeof(u16), tiles->tile_sprites, GL_STATIC_DRAW);
 
     glGenTextures(1, &this->map_buf_tex);
     glBindTexture(GL_TEXTURE_BUFFER, this->map_buf_tex);
@@ -243,8 +201,8 @@ void render_map(const MapDrawLayer& map)
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_BUFFER, map.map_buf_tex);
 
-    glUniform1ui(glGetUniformLocation(map.shader_prog.id, "width"), 30);
-    glUniform1ui(glGetUniformLocation(map.shader_prog.id, "height"), 28);
+    glUniform1ui(glGetUniformLocation(map.shader_prog.id, "width"), 40);
+    glUniform1ui(glGetUniformLocation(map.shader_prog.id, "height"), 23);
     glUniform1i(glGetUniformLocation(map.shader_prog.id, "atlas"), 0);
     glUniform1i(glGetUniformLocation(map.shader_prog.id, "tiles"), 1);
 
@@ -254,7 +212,50 @@ void render_map(const MapDrawLayer& map)
     glBindVertexArray(0);
 }
 
-#endif
+Texture::Texture(int w, int h)
+{
+    glGenTextures(1, &this->id);
+    glBindTexture(GL_TEXTURE_2D, this->id);
+
+    glTexParameteri(
+      GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexImage2D(GL_TEXTURE_2D,
+                 0,
+                 GL_RGBA,
+                 w,
+                 h,
+                 0,
+                 GL_RGBA,
+                 GL_UNSIGNED_BYTE,
+                 nullptr);
+    glGenerateMipmap(GL_TEXTURE_2D);
+    glBindTexture(GL_TEXTURE_2D, 0);
+}
+
+Texture::Texture(int w, int h, ubyte* data)
+{
+    glGenTextures(1, &this->id);
+    std::cout << "Gen tex " << this->id << ", wxh: " << w << " " << h << std::endl;
+    glBindTexture(GL_TEXTURE_2D, this->id);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAX_LEVEL, 1);
+    glTexImage2D(GL_TEXTURE_2D,
+                 0,
+                 GL_RGBA,
+                 w,
+                 h,
+                 0,
+                 GL_RGBA,
+                 GL_UNSIGNED_BYTE,
+                 data);
+    glGenerateMipmap(GL_TEXTURE_2D);
+    glBindTexture(GL_TEXTURE_2D, 0);
+}
 
 Quad::Quad(rigel::Rectangle rect, Shader shader)
   : dims(rect)
@@ -269,11 +270,11 @@ Quad::Quad(rigel::Rectangle rect, Shader shader)
     glBindVertexArray(this->vao);
 
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(quad), quad, GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(QUAD_VERTS), QUAD_VERTS, GL_STATIC_DRAW);
 
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
     glBufferData(
-      GL_ELEMENT_ARRAY_BUFFER, sizeof(quad_idx), quad_idx, GL_STATIC_DRAW);
+      GL_ELEMENT_ARRAY_BUFFER, sizeof(QUAD_IDXS), QUAD_IDXS, GL_STATIC_DRAW);
 
     glVertexAttribPointer(
       0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
@@ -382,7 +383,8 @@ Viewport::get_screen_transform() const
     screen_transform = glm::translate(screen_transform, glm::vec3(-1, -1, 0));
     screen_transform = glm::scale(
       screen_transform,
-      glm::vec3(this->scale * (2.0 / 1280.0), this->scale * (2.0 / 720.0), 0));
+      glm::vec3(this->scale * (2.0 / this->width),
+                this->scale * (2.0 / this->height), 0));
     screen_transform = glm::translate(screen_transform, this->position * -1.0f);
 
     return screen_transform;
@@ -394,83 +396,7 @@ Viewport::zoom(float factor)
     this->scale = factor;
 }
 
-const char* vector_vs_src = "#version 400 core\n"
-                            "layout (location = 0) in vec3 vert;\n"
-                            "layout (location = 1) in vec3 color;\n"
-                            "out vec3 f_color;\n"
-                            "uniform mat4 screen_transform;\n"
-                            "void main() {\n"
-                            "gl_Position = screen_transform * vec4(vert, 1.0);"
-                            "f_color = color;\n"
-                            "}";
-
-const char* vector_fs_src = "#version 400 core\n"
-                            "in vec3 f_color;\n"
-                            "out vec4 FragColor;\n"
-                            "void main(){"
-                            "FragColor = vec4(f_color, 1.0);\n"
-                            "}";
-
-VectorRenderer::VectorRenderer()
-  : lines()
-  , needs_rebuffer(true)
-  , line_shader()
-{
-    line_shader.load_from_src(vector_vs_src, vector_fs_src);
-
-    glGenVertexArrays(1, &vao);
-    glBindVertexArray(vao);
-    glGenBuffers(1, &vbo);
-
-    glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glVertexAttribPointer(
-      0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(
-      1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
-    glEnableVertexAttribArray(1);
-
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-    glBindVertexArray(0);
-}
-
-int
-VectorRenderer::add_line(RenderLine line)
-{
-    lines.push_back(line);
-    needs_rebuffer = true;
-    return lines.size() - 1;
-}
-
-void
-VectorRenderer::update_line(int idx, RenderLine new_line)
-{
-    lines[idx] = new_line;
-    needs_rebuffer = true;
-}
-
-void
-VectorRenderer::render(Viewport& viewport)
-{
-    if (needs_rebuffer) {
-        glBindBuffer(GL_ARRAY_BUFFER, vbo);
-        glBufferData(GL_ARRAY_BUFFER,
-                     lines.size() * sizeof(RenderLine),
-                     lines.data(),
-                     GL_STREAM_DRAW);
-        needs_rebuffer = false;
-    }
-    glBindVertexArray(vao);
-    auto screen_transform = viewport.get_screen_transform();
-    glUseProgram(line_shader.id);
-    glUniformMatrix4fv(glGetUniformLocation(line_shader.id, "screen_transform"),
-                       1,
-                       false,
-                       glm::value_ptr(screen_transform));
-    glDrawArrays(GL_LINES, 0, lines.size() * 2);
-}
-
-GpuQuad::GpuQuad()
+void GpuQuad::initialize()
 {
     GLuint vbo;
     glGenBuffers(1, &vbo);
@@ -481,11 +407,11 @@ GpuQuad::GpuQuad()
     glBindVertexArray(this->vao);
 
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(quad), quad, GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(QUAD_VERTS), QUAD_VERTS, GL_STATIC_DRAW);
 
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
     glBufferData(
-      GL_ELEMENT_ARRAY_BUFFER, sizeof(quad_idx), quad_idx, GL_STATIC_DRAW);
+      GL_ELEMENT_ARRAY_BUFFER, sizeof(QUAD_IDXS), QUAD_IDXS, GL_STATIC_DRAW);
 
     glVertexAttribPointer(
       0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
@@ -497,7 +423,7 @@ GpuQuad::GpuQuad()
     glBindVertexArray(0);
 }
 
-SpriteAtlas::SpriteAtlas()
+SpriteLibrary::SpriteLibrary()
 {
     for (int i = 0; i < MAX_ATLAS_SPRITES; i++) {
         loaded_sprites[i].resource_id = SPRITE_RESOURCE_ID_NONE;
@@ -505,7 +431,7 @@ SpriteAtlas::SpriteAtlas()
 }
 
 Sprite*
-SpriteAtlas::lookup(SpriteResourceId id)
+SpriteLibrary::lookup(SpriteResourceId id)
 {
     auto hash = id & (MAX_ATLAS_SPRITES - 1);
     if (loaded_sprites[hash].resource_id == id) {
@@ -515,7 +441,7 @@ SpriteAtlas::lookup(SpriteResourceId id)
 }
 
 SpriteResourceId
-SpriteAtlas::load_sprite(SpriteResourceId resource_id,
+SpriteLibrary::load_sprite(SpriteResourceId resource_id,
                          usize width,
                          usize height,
                          ubyte* data)
@@ -561,52 +487,166 @@ SpriteAtlas::load_sprite(SpriteResourceId resource_id,
     return resource_id;
 }
 
-void
-SpriteRenderStep::render_entities_in_world(Viewport* viewport,
-                                           WorldChunk* world_chunk)
+static RenderState render_state;
+
+const char* screen_vs_src = "#version 400 core\n"
+                            "layout (location = 0) in vec3 vert;\n"
+                            "layout (location = 1) in vec2 uv;\n"
+                            "out vec2 tex_uv;\n"
+                            "uniform mat4 screen_transform;\n"
+                            "uniform mat4 world_transform;\n"
+                            "void main() {\n"
+                            "gl_Position = screen_transform * world_transform * vec4(vert, 1.0);\n"
+                            "tex_uv = uv;\n"
+                            "}";
+
+const char* screen_fs_src = "#version 400 core\n"
+                            "in vec2 tex_uv;\n"
+                            "uniform sampler2D game;\n"
+                            "out vec4 FragColor;\n"
+                            "void main(){\n"
+                            "FragColor = texture(game, tex_uv);\n"
+                            "}";
+
+void initialize_renderer(f32 fb_width, f32 fb_height)
 {
-    // TODO: need to sort entities
-    for (u32 i = 0; i < world_chunk->next_free_entity_idx; i++) {
-        auto entity = &world_chunk->entities[i];
-        auto sprite = atlas->lookup(entity->sprite_id);
-        assert(sprite && "Trying to render unloaded sprite!");
+    // global UBO
+    glGenBuffers(1, &render_state.global_ubo);
+    glBindBuffer(GL_UNIFORM_BUFFER, render_state.global_ubo);
+    glBufferData(GL_UNIFORM_BUFFER, sizeof(GlobalUniforms), nullptr, GL_STATIC_DRAW);
+    glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
-        auto screen_transform = viewport->get_screen_transform();
-        Rectangle quad_rect = { .x = entity->position.x,
-                                      .y = entity->position.y,
-                                      .w = sprite->width,
-                                      .h = sprite->height };
-        auto world_transform = quad_rect.get_world_transform();
+    render_state.internal_target.w = 320;
+    render_state.internal_target.h = 180;
+    //Texture fb_texture("astro2.png");
+    Texture fb_texture(render_state.internal_target.w, render_state.internal_target.h);
+    render_state.texture = fb_texture;
 
-        glUseProgram(sprite_shader.id);
-        glUniform1i(glGetUniformLocation(sprite_shader.id, "sprite_tex"), 0);
-        glUniformMatrix4fv(
-          glGetUniformLocation(sprite_shader.id, "screen_transform"),
-          1,
-          false,
-          glm::value_ptr(screen_transform));
-        glUniformMatrix4fv(
-          glGetUniformLocation(sprite_shader.id, "world_transform"),
-          1,
-          false,
-          glm::value_ptr(world_transform));
+    render_state.screen_shader.load_from_src(screen_vs_src, screen_fs_src);
+    render_state.screen.initialize();
 
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, sprite->tex_id);
-        glBindVertexArray(quad.vao);
-        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-        glBindVertexArray(0);
-        glBindTexture(GL_TEXTURE_2D, 0);
+    // create the internal framebuffer
+    glGenFramebuffers(1, &render_state.internal_target.target_framebuf);
+    glBindFramebuffer(GL_FRAMEBUFFER, render_state.internal_target.target_framebuf);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, render_state.texture.id, 0);
 
-        // There are some other optimizations we may be able to make here.
-        // For one, there will likely be more than one entity on screen using
-        // the same sprite but not enough to jump to instancing (that will be
-        // later). Grouping entities by sprite could be a good way to cut down
-        // on the number of texture binds we have to do. We likely won't have a
-        // lot of entities so this might not actually be worth it but it's a
-        // thought.
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+        std::cout << "ERROR::FRAMEBUFFER:: Framebuffer is not complete!" << std::endl;
     }
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    render_state.fb_width = fb_width;
+    render_state.fb_height = fb_height;
 }
 
-} // rigel
-} // render
+void begin_render(f32 fb_width, f32 fb_height)
+{
+    render_state.fb_width = fb_width;
+    render_state.fb_height = fb_height;
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glViewport(0, 0, render_state.fb_width, render_state.fb_height);
+    glClearColor(0, 0, 0, 1);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    // TODO: send down global uniforms here
+}
+
+void begin_render_to_target(RenderTarget target)
+{
+    glBindFramebuffer(GL_FRAMEBUFFER, target.target_framebuf);
+    glViewport(0, 0, target.w, target.h);
+    glClearColor(0, 0, 0, 1);
+    glClear(GL_COLOR_BUFFER_BIT);
+}
+
+void end_render_to_target()
+{
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glViewport(0, 0, render_state.fb_width, render_state.fb_height);
+}
+
+void end_render()
+{
+    // put the quad on the screen
+    f32 fb_width = render_state.internal_target.w;
+    f32 fb_height = render_state.internal_target.h;
+    GpuQuad screen = render_state.screen;
+    Shader screen_shader = render_state.screen_shader;
+    f32 scale_factor = 4.0;
+
+    glm::mat4 world_transform(1.0f);
+    world_transform = glm::scale(world_transform, glm::vec3(fb_width, fb_height, 0.0f));
+    world_transform = glm::translate(world_transform, glm::vec3(-0.5, -0.5, 0));
+
+    glm::mat4 screen_transform(1.0f);
+    //screen_transform = glm::translate(screen_transform, glm::vec3(-0.5, -0.5, 0));
+    screen_transform = glm::scale(
+      screen_transform,
+      glm::vec3(scale_factor * (2.0 / render_state.fb_width),
+                -scale_factor * (2.0 / render_state.fb_height), 0));
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, render_state.texture.id);
+
+    glUseProgram(screen_shader.id);
+    glUniformMatrix4fv(glGetUniformLocation(screen_shader.id, "screen_transform"),
+                       1,
+                       false,
+                       glm::value_ptr(screen_transform));
+    glUniformMatrix4fv(glGetUniformLocation(screen_shader.id, "world_transform"),
+                       1,
+                       false,
+                       glm::value_ptr(world_transform));
+    glUniform1i(glGetUniformLocation(screen_shader.id, "game"),
+                       0);
+
+    glBindVertexArray(screen.vao);
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+    glBindVertexArray(0);
+
+}
+
+void render_stage_background_layer(Viewport& viewport, Texture& texture, Shader& shader)
+{
+    auto quad = render_state.screen;
+
+    glm::mat4 world_transform(1.0f);
+    world_transform = glm::scale(world_transform, glm::vec3(RENDER_INTERNAL_WIDTH, RENDER_INTERNAL_HEIGHT, 0.0f));
+    world_transform = glm::translate(world_transform, glm::vec3(-0.5, -0.5, 0));
+
+    glm::mat4 screen_transform(1.0f);
+    screen_transform = glm::scale(
+      screen_transform,
+      glm::vec3((2.0 / RENDER_INTERNAL_WIDTH),
+                (2.0 / RENDER_INTERNAL_HEIGHT), 0));
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, texture.id);
+
+    glUseProgram(shader.id);
+    glUniformMatrix4fv(glGetUniformLocation(shader.id, "world_transform"),
+                       1,
+                       false,
+                       glm::value_ptr(world_transform));
+
+    glUniformMatrix4fv(glGetUniformLocation(shader.id, "screen_transform"),
+                       1,
+                       false,
+                       glm::value_ptr(screen_transform));
+    glUniform1i(glGetUniformLocation(shader.id, "graphic"), 0);
+
+    glBindVertexArray(quad.vao);
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+    glBindVertexArray(0);
+}
+
+RenderTarget internal_target()
+{
+    return render_state.internal_target;
+}
+
+
+} // namespace render
+} // namespace rigel

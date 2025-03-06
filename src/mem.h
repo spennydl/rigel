@@ -1,10 +1,9 @@
-#ifndef GAME_MEM_H
-#define GAME_MEM_H
+#ifndef RIGEL_MEM_H
+#define RIGEL_MEM_H
 
+#include "rigel.h"
 #include <cassert>
-#include <cstdint>
 #include <utility>
-#include <iostream>
 
 typedef intptr_t mem_ptr;
 typedef uint8_t byte_ptr;
@@ -103,9 +102,10 @@ struct GameMem
     Arena stage_arena;
     Arena colliders_arena;
     Arena scratch_arena;
+    Arena resource_arena;
 };
 
+} // namespace mem
+} // namespace rigel
 
-}
-}
-#endif
+#endif // RIGEL_MEM_H

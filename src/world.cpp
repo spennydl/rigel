@@ -1,150 +1,23 @@
-#include "collider.h"
 #include "world.h"
+#include <tinyxml2.h>
+
 #include <iostream>
+#include <sstream>
+
 
 namespace rigel {
 
-// I dislike Tiled's xml format. At least it's gonna go
-// away when we have asset packing implemented.
-
-void load_aabb_colliders(Stage* stage, tinyxml2::XMLElement* root, mem::GameMem& mem)
-{
-    auto obj = root->FirstChildElement("object");
-
-    size_t n_objects = 0;
-    while (obj) {
-        n_objects++;
-        obj = obj->NextSiblingElement("object");
-    }
-    obj = root->FirstChildElement("object");
-
-    stage->colliders.n_aabbs = n_objects;
-    stage->colliders.aabbs =
-      mem.stage_arena.alloc_array<AABB>(n_objects);
-
-    auto colliders = &stage->colliders;
-    // load level colliders
-    int i = 0;
-    while (obj) {
-        auto aabb = &colliders->aabbs[i];
-
-        auto aabb_w_ex = obj->IntAttribute("width") / 2.0;
-        auto aabb_h_ex = obj->IntAttribute("height") / 2.0;
-        auto x = obj->IntAttribute("x");
-        auto y = stage->dimensions.h - obj->IntAttribute("y") - (aabb_h_ex * 2.0);
-
-        aabb->center = glm::vec3(x + aabb_w_ex, y + aabb_h_ex, 0);
-        aabb->extents = glm::vec3(aabb_w_ex, aabb_h_ex, 0);
-
-        obj = obj->NextSiblingElement("object");
-        i++;
-    }
-    std::cout << "loaded " << i << " AABBs" << std::endl;
-}
-
-void load_tri_colliders(Stage* stage, tinyxml2::XMLElement* root, mem::GameMem& mem)
-{
-    auto obj = root->FirstChildElement("object");
-
-    size_t n_objects = 0;
-    while (obj) {
-        n_objects++;
-        obj = obj->NextSiblingElement("object");
-    }
-    obj = root->FirstChildElement("object");
-    std::cout << "found " << n_objects << " tris";
-
-    stage->colliders.n_tris = n_objects;
-    stage->colliders.tris =
-      mem.stage_arena.alloc_array<CollisionTri>(n_objects);
-
-    auto colliders = &stage->colliders;
-    // load level colliders
-    int i = 0;
-    while (obj) {
-        auto tri = &colliders->tris[i];
-        auto xml_tri = obj->FirstChildElement("polygon");
-        f32 x = obj->FloatAttribute("x");
-        f32 y = obj->FloatAttribute("y");
-
-        char* offsets = (char*)xml_tri->Attribute("points");
-
-        for (int j = 0; j < 3; j++) {
-            char* end = offsets;
-            while (*end && *end != ',')
-                end++;
-
-            f32 x_off = strtod(offsets, &end);
-            offsets = end + 1;
-            while (*end && *end != ' ')
-                end++;
-
-            f32 y_off = strtod(offsets, &end);
-            offsets = end + 1;
-
-            tri->vertices[j].x = x + x_off;
-            tri->vertices[j].y = stage->dimensions.h - (y + y_off);
-            //std::cout << tri->vertices[j].x << "," << tri->vertices[j].y << std::endl;
-        }
-
-        obj = obj->NextSiblingElement("object");
-        i++;
-    }
-    std::cout << "loaded " << i << " tris" << std::endl;
-}
-
-auto
-load_level_data(mem::GameMem& mem,
-                WorldChunk* world_chunk,
-                const char* chunk_name)
-{
-    mem.stage_arena.reinit();
-    Stage* stage = mem.stage_arena.alloc_simple<Stage>();
-    assert(stage && "Couldn't alloc a stage!");
-
-    tinyxml2::XMLDocument doc;
-    doc.LoadFile(chunk_name);
-
-    auto map = doc.FirstChildElement("map");
-    if (!map) {
-        return;
-    }
-    auto props = map->FirstChildElement("imagelayer")->FirstChildElement("image");
-    auto width = props->IntAttribute("width");
-    auto height = props->IntAttribute("height");
-    
-    stage->dimensions.x = 0;
-    stage->dimensions.y = 0;
-    stage->dimensions.w = width;
-    stage->dimensions.h = height;
-
-    auto obj_group = map->FirstChildElement("objectgroup");
-    auto group_name = obj_group->Attribute("name");
-    std::cout << group_name << std::endl;
-
-    if (strncmp(group_name, "AABB", 4) == 0) {
-        load_aabb_colliders(stage, obj_group, mem);
-    } else if (strncmp(group_name, "TRI", 3) == 0) {
-        load_tri_colliders(stage, obj_group, mem);
-    }
-
-    obj_group = obj_group->NextSiblingElement("objectgroup");
-    group_name = obj_group->Attribute("name");
-    std::cout << group_name << std::endl;
-    if (strncmp(group_name, "AABB", 4) == 0) {
-        load_aabb_colliders(stage, obj_group, mem);
-    } else if (strncmp(group_name, "TRI", 4) == 0) {
-        load_tri_colliders(stage, obj_group, mem);
-    }
-
-    world_chunk->active_stage = stage;
-}
-
 WorldChunk*
-load_world_chunk(mem::GameMem& mem, const char* chunk_name)
+load_world_chunk(mem::GameMem& mem)
 {
     WorldChunk* result = mem.game_state_arena.alloc_simple<WorldChunk>();
-    load_level_data(mem, result, chunk_name);
+    // TODO: this should be something that can hold lots of them I think
+    mem::Arena tilemap_arena = mem.stage_arena.alloc_sub_arena(6*ONE_KB);
+
+    TextResource tilemap_data = load_text_resource(mem.resource_arena, "resource/map/layeredlevel.tmx");
+
+    result->active_map = load_tile_map_from_xml(tilemap_arena, tilemap_data);
+
     for (int i = 0; i < MAX_ENTITIES; i++) {
         result->entity_hash[i].id = ENTITY_ID_NONE;
         result->entities[i].id = ENTITY_ID_NONE;
@@ -212,9 +85,6 @@ WorldChunk::add_player(mem::GameMem& mem,
     return new_entity;
 }
 
-} // namespace rigel
-#if 0
-
 auto
 operator<<(std::ostream& os, const TileType& tt) -> std::ostream&
 {
@@ -232,21 +102,20 @@ operator<<(std::ostream& os, const TileType& tt) -> std::ostream&
     return os;
 }
 
-auto
-parse_tile_csv(const char* csv, TileMap& map)
+void
+parse_tile_csv(const char* csv, TileMap* map)
 {
     std::string line;
     std::size_t rows = 0;
     std::size_t cols = 0;
-    int map_size = map.width * map.height;
 
-    TileType* tiles = new TileType[map_size];
-    uint16_t* sprites = new uint16_t[map_size];
+    int map_size = WORLD_SIZE_TILES;
+
     // glm::mat4* transforms = new glm::mat4[MAP_SIZE];
 
     std::istringstream csvin(csv);
     while (std::getline(csvin, line)) {
-        if ((rows * map.width) + cols >= (map.width * map.height)) {
+        if ((rows * WORLD_WIDTH_TILES) + cols >= (WORLD_WIDTH_TILES * WORLD_HEIGHT_TILES)) {
             std::cerr << "ERR: Overflowed tile map!" << std::endl;
             std::cerr << rows << " x " << cols << std::endl;
             return;
@@ -261,12 +130,9 @@ parse_tile_csv(const char* csv, TileMap& map)
         while (std::getline(line_ss, tile_i, ',')) {
             int tileno;
             if (std::istringstream(tile_i) >> tileno) {
-                int idx = (rows * map.width) + cols;
-                sprites[idx] = tileno;
-                tiles[idx] = (tileno == 0) ? TileType::EMPTY : TileType::WALL;
-                // glm::mat4 transform;
-                // transforms[idx] = glm::translate(transform, glm::vec3(rows *
-                // 16, cols * 16, 0));
+                i32 idx = (rows * WORLD_WIDTH_TILES) + cols;
+                map->tile_sprites[idx] = tileno;
+                map->tiles[idx] = (tileno == 0) ? TileType::EMPTY : TileType::WALL;
             } else {
                 std::cerr << "WARN: unexpected value in tile map csv"
                           << std::endl;
@@ -277,46 +143,50 @@ parse_tile_csv(const char* csv, TileMap& map)
         cols = 0;
         rows++;
     }
-    map.tiles = tiles;
-    map.sprites = sprites;
 }
 
 void
-dump_tile_map(const TileMap& tilemap)
+dump_tile_map(const TileMap* tilemap)
 {
-    std::cout << tilemap.width << "x" << tilemap.height << std::endl;
-
-    for (std::size_t row = 0; row < tilemap.height; row++) {
-        for (std::size_t col = 0; col < tilemap.width; col++) {
-            auto idx = (row * tilemap.width) + col;
-            std::cout << tilemap.tiles[idx] << ":" << tilemap.sprites[idx]
+    for (std::size_t row = 0; row < WORLD_HEIGHT_TILES; row++) {
+        for (std::size_t col = 0; col < WORLD_WIDTH_TILES; col++) {
+            auto idx = (row * WORLD_WIDTH_TILES) + col;
+            std::cout << tilemap->tiles[idx] << ":" << tilemap->tile_sprites[idx]
                       << " ";
         }
         std::cout << std::endl;
     }
 }
 
-auto
-load_tile_map_from_xml(const std::filesystem::path& path) -> TileMap
+TileMap*
+load_tile_map_from_xml(mem::Arena& arena, TextResource xml_data)
 {
     tinyxml2::XMLDocument doc;
-    doc.LoadFile(path.c_str());
+    doc.Parse(xml_data.text, xml_data.length);
 
     auto map = doc.FirstChildElement("map");
-    if (!map) {
-        return {};
-    }
+    assert(map && "No map!");
+
     auto width = map->IntAttribute("width");
     auto height = map->IntAttribute("height");
 
-    TileMap tile_map;
-    tile_map.width = width;
-    tile_map.height = height;
+    assert(width == WORLD_WIDTH_TILES && "ERR: width is wrong");
+    assert(height == WORLD_HEIGHT_TILES && "ERR: height is wrong");
 
-    auto data =
-      map->FirstChildElement("layer")->FirstChildElement("data")->GetText();
-    parse_tile_csv(data, tile_map);
+    TileMap* tile_map = arena.alloc_simple<TileMap>();
+
+    auto map_el = map->FirstChildElement("layer");
+    while (true) {
+        if (strncmp(map_el->Attribute("name"), "fg", 2) == 0) {
+            auto data = map_el->FirstChildElement("data")->GetText();
+            parse_tile_csv(data, tile_map);
+            break;
+        }
+        map_el = map_el->NextSiblingElement("layer");
+    }
+    assert(map_el && "Couldn't find FG layer in map");
 
     return tile_map;
 }
-#endif
+
+}
