@@ -51,6 +51,38 @@ struct Entity
     ColliderSet* colliders;
 };
 
+inline void state_transition_air_to_land(Entity* e)
+{
+    u32 flags = e->state_flags;
+    flags &= ~(STATE_JUMPING | STATE_FALLING);
+    flags |= STATE_ON_LAND;
+    e->state_flags = flags;
+}
+
+inline void state_transition_land_to_jump(Entity* e)
+{
+    u32 flags = e->state_flags;
+    flags &= ~(STATE_ON_LAND);
+    flags |= STATE_JUMPING;
+    e->state_flags = flags;
+}
+
+inline void state_transition_land_to_fall(Entity* e)
+{
+    u32 flags = e->state_flags;
+    flags &= ~(STATE_ON_LAND);
+    flags |= STATE_FALLING;
+    e->state_flags = flags;
+}
+
+inline void state_transition_fall_exclusive(Entity* e)
+{
+    u32 flags = e->state_flags;
+    flags &= ~(STATE_ON_LAND | STATE_JUMPING);
+    flags |= STATE_FALLING;
+    e->state_flags = flags;
+}
+
 } // namespace entity
 } // namespace rigel
 

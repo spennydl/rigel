@@ -23,6 +23,7 @@ const f32 QUAD_VERTS[] = { 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0,
 
 const u32 QUAD_IDXS[] = { 0, 1, 2, 1, 2, 3 };
 
+
 class Viewport
 {
   public:
@@ -65,47 +66,17 @@ struct Shader
 bool
 check_shader_status(GLuint id, bool prog = false);
 
-struct SpriteAtlas
-{
-    GLuint id;
-    int tiles;
-    SpriteAtlas(ImageResource image);
-};
-// RESOURCE
-unsigned char*
-unpack_sprite_atlas(const std::string& path,
-                    int width,
-                    int height,
-                    int* out_levels);
-
-struct MapDrawLayer
-{
-    GLuint vao;
-    GLuint ebo;
-    GLuint map_buf;
-    GLuint map_buf_tex;
-
-    SpriteAtlas atlas;
-    Shader shader_prog;
-
-    MapDrawLayer(SpriteAtlas atlas, Shader prog);
-
-    void buffer_map(const TileMap* map);
-};
-
-void
-render_map(const MapDrawLayer& map);
+void draw_rectangle(Rectangle rect, f32 r, f32 g, f32 b);
 
 struct Texture
 {
     GLuint id;
-    Texture() : id(0) {}
-
-    // RESOURCE
-    Texture(const std::string& path);
-    Texture(int w, int h);
-    Texture(int w, int h, ubyte* data);
+    SpriteResourceId ready_idx;
 };
+Texture alloc_texture(int w, int h);
+Texture make_texture(int w, int h, ubyte* data);
+Texture make_texture(ImageResource image);
+Texture make_array_texture_from_vstrip(ImageResource image, usize n_images);
 
 struct Quad
 {
@@ -132,43 +103,67 @@ render_quad(Quad& quad, Viewport& viewport, int r, int g, int b);
 void
 render_tri(Tri& quad, Viewport& viewport, int r, int g, int b);
 
+struct BatchedTileRenderer {
+    GLuint vao;
+    usize n_tiles;
+    Texture tile_atlas;
+
+    // TODO: Tilemaps will never change. Why store them like I do? Why not store the geometry
+    // we make here instead?
+    //
+    // On second thought we absolutely need them in a grid format for spatial queries. Still,
+    // might be nice to keep some around.
+    BatchedTileRenderer(mem::Arena& scratch_arena, TileMap* tilemap, ImageResource atlas_image);
+    BatchedTileRenderer() : vao(0), n_tiles(0), tile_atlas() {}
+
+    void render(Viewport& viewport, Shader shader);
+};
+
 constexpr static usize MAX_SPRITES_ON_SCREEN = 256;
 constexpr static usize MAX_ATLAS_SPRITES = 256;
 
 constexpr static usize SPRITE_BYTES_PER_PIXEL = 4;
 
-// TODO: We're using this kinda backwards.
-// We need to hash the resource id and get the sprite idx from it
-struct SpriteMapId
+
+struct ResourceTextureMapping
 {
-    i32 idx;
-    SpriteResourceId resource_id;
+    ResourceId resource_id;
+    i32 texture_idx;
 };
 
-struct Sprite
+struct TextureLookup
 {
-    SpriteResourceId id;
-    GLuint tex_id;
-    usize width;
-    usize height;
+    usize next_free_texture_idx;
+    ResourceTextureMapping map[64];
+    Texture textures[64];
 };
 
-struct SpriteLibrary
+struct ShaderLookup
 {
-    usize next_free_idx;
-    SpriteMapId loaded_sprites[MAX_ATLAS_SPRITES];
-    Sprite sprites[MAX_ATLAS_SPRITES];
-
-    SpriteLibrary();
-
-    // TODO: why return SpriteId?
-    SpriteResourceId load_sprite(SpriteResourceId resource_id,
-                                 usize width,
-                                 usize height,
-                                 ubyte* data);
-
-    Sprite* lookup(SpriteResourceId id);
+    usize next_free_shader_idx;
+    Shader shaders[64];
 };
+
+struct WorldChunkDrawData
+{
+    Shader background_shader;
+    BatchedTileRenderer fg_renderer;
+    BatchedTileRenderer bg_renderer;
+    BatchedTileRenderer deco_renderer;
+};
+void make_world_chunk_renderable(mem::GameMem* memory, WorldChunk* world_chunk, ImageResource tile_set);
+
+struct RenderableAssets
+{
+    ShaderLookup* ready_shaders;
+    TextureLookup* ready_textures;
+
+    // TODO: this will be a collection at some point
+    WorldChunkDrawData* renderable_world_chunk;
+};
+
+Shader* get_renderable_shader(mem::Arena* gfx_arena, TextResource vs_src, TextResource fs_src);
+Texture* get_renderable_texture(mem::Arena* gfx_arena, ResourceId sprite_id);
 
 struct GpuQuad
 {
@@ -179,9 +174,9 @@ struct GpuQuad
 
 struct RenderTarget
 {
+    i32 w;
+    i32 h;
     GLuint target_framebuf;
-    int w;
-    int h;
 };
 
 RenderTarget create_new_render_target();
@@ -192,25 +187,34 @@ struct GlobalUniforms
 };
 static GlobalUniforms GLOBAL_UNIFORMS;
 
+enum GameShaders {
+    SCREEN_SHADER = 0,
+    TILEMAP_DRAW_SHADER,
+    ENTITY_DRAW_SHADER,
+    N_GAME_SHADERS
+};
+
 struct RenderState
 {
     GLuint global_ubo;
     RenderTarget internal_target;
     Texture texture;
     GpuQuad screen;
-    Shader screen_shader;
     f32 fb_width;
     f32 fb_height;
+    Rectangle current_viewport;
 };
 
-void initialize_renderer(f32 fb_width, f32 fb_height);
+void initialize_renderer(mem::Arena* gfx_arena, f32 fb_width, f32 fb_height);
 
 void begin_render(f32 fb_width, f32 fb_height);
+void render_foreground_layer(mem::Arena* gfx_arena, Viewport& viewport);
+void render_background_layer(mem::Arena* gfx_arena, Viewport& viewport);
+void render_decoration_layer(mem::Arena* gfx_arena, Viewport& viewport);
+void render_all_entities(mem::Arena* gfx_arena, Viewport& viewport, WorldChunk* world_chunk, usize temp_anim_frame);
 
 void begin_render_to_target(RenderTarget target);
 void end_render_to_target();
-
-void render_stage_background_layer(Viewport& viewport, Texture& texture, Shader& shader);
 
 void end_render();
 

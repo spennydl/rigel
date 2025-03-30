@@ -12,9 +12,9 @@ load_world_chunk(mem::GameMem& mem)
 {
     WorldChunk* result = mem.game_state_arena.alloc_simple<WorldChunk>();
     // TODO: this should be something that can hold lots of them I think
-    mem::Arena tilemap_arena = mem.stage_arena.alloc_sub_arena(6*ONE_KB);
+    mem::Arena tilemap_arena = mem.stage_arena.alloc_sub_arena(18*ONE_KB);
 
-    TextResource tilemap_data = load_text_resource(mem.resource_arena, "resource/map/layeredlevel.tmx");
+    TextResource tilemap_data = load_text_resource("resource/map/layeredlevel.tmx");
 
     result->active_map = load_tile_map_from_xml(tilemap_arena, tilemap_data);
 
@@ -108,6 +108,7 @@ parse_tile_csv(const char* csv, TileMap* map)
     std::string line;
     std::size_t rows = 0;
     std::size_t cols = 0;
+    usize n_nonempty = 0;
 
     int map_size = WORLD_SIZE_TILES;
 
@@ -132,7 +133,12 @@ parse_tile_csv(const char* csv, TileMap* map)
             if (std::istringstream(tile_i) >> tileno) {
                 i32 idx = (rows * WORLD_WIDTH_TILES) + cols;
                 map->tile_sprites[idx] = tileno;
-                map->tiles[idx] = (tileno == 0) ? TileType::EMPTY : TileType::WALL;
+                if (tileno == 0) {
+                    map->tiles[idx] = TileType::EMPTY;
+                } else {
+                    map->tiles[idx] = TileType::WALL;
+                    n_nonempty++;
+                }
             } else {
                 std::cerr << "WARN: unexpected value in tile map csv"
                           << std::endl;
@@ -143,6 +149,7 @@ parse_tile_csv(const char* csv, TileMap* map)
         cols = 0;
         rows++;
     }
+    map->n_nonempty_tiles = n_nonempty;
 }
 
 void
@@ -174,17 +181,33 @@ load_tile_map_from_xml(mem::Arena& arena, TextResource xml_data)
     assert(height == WORLD_HEIGHT_TILES && "ERR: height is wrong");
 
     TileMap* tile_map = arena.alloc_simple<TileMap>();
+    TileMap* decoration = arena.alloc_simple<TileMap>();
+    TileMap* background = arena.alloc_simple<TileMap>();
+    tile_map->background = background;
+    tile_map->decoration = decoration;
 
+    bool fg = false;
+    bool bg = false;
+    bool dec = false;
     auto map_el = map->FirstChildElement("layer");
-    while (true) {
+    while (!(fg && bg && dec)) {
         if (strncmp(map_el->Attribute("name"), "fg", 2) == 0) {
             auto data = map_el->FirstChildElement("data")->GetText();
             parse_tile_csv(data, tile_map);
-            break;
+            fg = true;
+        }
+        if (strncmp(map_el->Attribute("name"), "bg", 2) == 0) {
+            auto data = map_el->FirstChildElement("data")->GetText();
+            parse_tile_csv(data, background);
+            bg = true;
+        }
+        if (strncmp(map_el->Attribute("name"), "decoration", 10) == 0) {
+            auto data = map_el->FirstChildElement("data")->GetText();
+            parse_tile_csv(data, decoration);
+            dec = true;
         }
         map_el = map_el->NextSiblingElement("layer");
     }
-    assert(map_el && "Couldn't find FG layer in map");
 
     return tile_map;
 }

@@ -38,6 +38,24 @@ typedef int32_t EntityId;
 constexpr static EntityId ENTITY_ID_NONE = -1;
 // TODO: is this a good idea?
 constexpr static EntityId PLAYER_ENTITY_ID = 0;
+
+// 1/120th of a second for absolutely no raisin
+constexpr static i64 UPDATE_TIME_NS = 8333333;
+// 1/60th target for rendering
+constexpr static i64 RENDER_TIME_NS = 16666667;
+
+
+// Globals
+struct InputState {
+    bool move_right_requested;
+    bool move_left_requested;
+    bool jump_requested;
+};
+
+extern InputState g_input_state;
+
+
+
 }
 
 

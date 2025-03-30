@@ -7,7 +7,7 @@
 namespace rigel {
 typedef i32 SpriteResourceId;
 typedef i32 ResourceId;
-constexpr static i32 SPRITE_RESOURCE_ID_NONE = -1;
+constexpr static i32 RESOURCE_ID_NONE = -1;
 
 #define MAX_TEXT_RESOURCES 128
 #define MAX_IMAGE_RESOURCES 128
@@ -23,6 +23,7 @@ struct ImageResource {
     usize width;
     usize height;
     usize channels;
+    usize n_frames;
 
     ubyte* data;
 };
@@ -40,11 +41,12 @@ struct ResourceLookup {
 
 void resource_initialize(mem::Arena& resource_arena);
 
-TextResource load_text_resource(mem::Arena& resource_arena, const char* file_path);
-TextResource get_text_resource(mem::Arena& resource_arena, ResourceId id);
+TextResource load_text_resource(const char* file_path);
+TextResource get_text_resource(ResourceId id);
 
-ImageResource load_image_resource(mem::Arena& resource_arena, const char* file_path);
-ImageResource get_image_resource(mem::Arena& resource_arena, ResourceId id);
+// TODO: load n_frames from a file
+ImageResource load_image_resource(const char* file_path, usize n_frames = 1);
+ImageResource get_image_resource(ResourceId id);
 
 } // namespace rigel
 

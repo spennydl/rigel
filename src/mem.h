@@ -103,6 +103,7 @@ struct GameMem
     Arena colliders_arena;
     Arena scratch_arena;
     Arena resource_arena;
+    Arena gfx_arena;
 };
 
 } // namespace mem

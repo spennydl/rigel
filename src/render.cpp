@@ -1,11 +1,13 @@
 #include "render.h"
 #include "world.h"
+#include "resource.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <glad/gl.h>
 
 // TODO: remove
 #include <string>
+#include <sstream>
 #include <iostream>
 
 #define STB_IMAGE_IMPLEMENTATION
@@ -14,6 +16,8 @@
 
 namespace rigel {
 namespace render {
+
+static Shader game_shaders[N_GAME_SHADERS];
 
 bool
 check_shader_status(GLuint id, bool prog)
@@ -74,84 +78,83 @@ Shader::Shader(const char* vs_src, const char* fs_src)
     load_from_src(vs_src, fs_src);
 }
 
-// TODO: change path to just accept data
-SpriteAtlas::SpriteAtlas(ImageResource image)
+// TODO: Batching!
+// We need to generate a single VBO containing all of the tiles to render.
+// Might have to go back to using a single atlas image instead of a 2D array
+// texture?
+
+// TODO: Tilemaps will never change. Why store them like I do? Why not store the geometry
+// we make here instead?
+//
+// On second thought we absolutely need them in a grid format for spatial queries. Still,
+// might be nice to keep some around.
+BatchedTileRenderer::BatchedTileRenderer(mem::Arena& scratch_arena, TileMap* tilemap, ImageResource atlas_image)
+    : vao(0), n_tiles(tilemap->n_nonempty_tiles)
 {
-    int tiles_in_row = image.width / 8;
-    int tiles_in_col = image.height / 8;
-    this->tiles = tiles_in_row * tiles_in_col;
+    usize quad_elems = 20;
+    usize idx_elems = 6;
+    f32* verts = scratch_arena.alloc_array<f32>(quad_elems * n_tiles);
+    u32* indices = scratch_arena.alloc_array<usize>(idx_elems * n_tiles);
 
-    glGenTextures(1, &this->id);
-    glBindTexture(GL_TEXTURE_2D_ARRAY, this->id);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAX_LEVEL, 1);
+    usize tiles_per_row = atlas_image.width / 8;
+    usize tiles_per_col = atlas_image.height / 8;
 
-    glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_RGBA8, 8, 8, this->tiles, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    f32 u_step = 1.0 / (f32)tiles_per_row;
+    f32 v_step = 1.0 / (f32)tiles_per_col;
 
-    int zoffset = 0;
-    glPixelStorei(GL_UNPACK_ROW_LENGTH, image.width);
-    for (int y = 0; y < tiles_in_col; y++) {
-        for (int x = 0; x < tiles_in_row; x++) {
-            glPixelStorei(GL_UNPACK_SKIP_PIXELS, x * 8);
-            glPixelStorei(GL_UNPACK_SKIP_ROWS, y * 8);
-            glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, zoffset++, 8, 8, 1, GL_RGBA, GL_UNSIGNED_BYTE, image.data);
-        }
-    }
-
-    glGenerateMipmap(GL_TEXTURE_2D_ARRAY);
-}
-
-unsigned char* unpack_sprite_atlas(const std::string& path, int width, int height, int* out_levels)
-{
-    int w, h, channels;
-
-    auto image_data = stbi_load(path.c_str(), &w, &h, &channels, 3);
-    channels = 3;
-    if (image_data == nullptr) {
-        std::cerr << "Couldn't load atlas texture" << std::endl;
-        return nullptr;
-    }
-
-    unsigned char* result = new unsigned char[w * h * channels];
-
-    int sprite_width_bytes = width * channels;
-    int w_bytes = w * channels;
-
-    int n_rows = h / height;
-    int n_cols = w / width;
-
-    for (int tile_row = 0; tile_row < n_rows; tile_row++) {
-        int common_offset = tile_row * (w_bytes * height);
-        for (int pixel_row = 0; pixel_row < height; pixel_row++) {
-            for (int x = 0; x < n_cols; x++) {
-                int sprite_stride = x * sprite_width_bytes;
-                int row_stride = pixel_row * w_bytes;
-                int orig_offset = common_offset + row_stride + sprite_stride;
-
-                int dest_sprite_stride = x * sprite_width_bytes * height;
-                int dest_row_stride = pixel_row * sprite_width_bytes;
-
-                std::copy(image_data + orig_offset,
-                          image_data + orig_offset + sprite_width_bytes,
-                          result + common_offset + dest_sprite_stride + dest_row_stride);
+    usize internal_idx = 0;
+    for (usize y = 0; y < WORLD_HEIGHT_TILES; y++) {
+        for (usize x = 0; x < WORLD_WIDTH_TILES; x++) {
+            usize i = (y * WORLD_WIDTH_TILES) + x;
+            if (tilemap->tiles[i] == TileType::EMPTY) {
+                continue;
             }
+
+            usize tile_sprite = tilemap->tile_sprites[i] - 1;
+
+            f32 u = (tile_sprite % tiles_per_row) * u_step;
+            f32 v = (tile_sprite / tiles_per_row) * v_step;
+
+            usize quad_start = internal_idx * quad_elems;
+            usize idx_start = internal_idx * idx_elems;
+
+            verts[quad_start] = x;
+            verts[quad_start + 1] = y;
+            verts[quad_start + 2] = 0.0;
+            verts[quad_start + 3] = u;
+            verts[quad_start + 4] = v;
+
+            verts[quad_start + 5] = x;
+            verts[quad_start + 6] = y + 1;
+            verts[quad_start + 7] = 0.0;
+            verts[quad_start + 8] = u;
+            verts[quad_start + 9] = v + v_step;
+
+            verts[quad_start + 10] = x + 1;
+            verts[quad_start + 11] = y;
+            verts[quad_start + 12] = 0.0;
+            verts[quad_start + 13] = u + u_step;
+            verts[quad_start + 14] = v;
+
+            verts[quad_start + 15] = x + 1;
+            verts[quad_start + 16] = y + 1;
+            verts[quad_start + 17] = 0.0;
+            verts[quad_start + 18] = u + u_step;
+            verts[quad_start + 19] = v + v_step;
+
+            usize elem_idx_start = quad_start / 5;
+            indices[idx_start]     = elem_idx_start + 0;
+            indices[idx_start + 1] = elem_idx_start + 1;
+            indices[idx_start + 2] = elem_idx_start + 2;
+            indices[idx_start + 3] = elem_idx_start + 1;
+            indices[idx_start + 4] = elem_idx_start + 2;
+            indices[idx_start + 5] = elem_idx_start + 3;
+
+            internal_idx += 1;
         }
     }
+    std::cout << "There were " << n_tiles << " tiles and we found " << internal_idx << " of them" << std::endl;
 
-    stbi_image_free(image_data);
-
-    *out_levels = (w / width) * (h / height);
-    //stbi_write_png("./test.png", width, height * *out_levels, 3, result, width * channels);
-
-    return result;
-}
-
-MapDrawLayer::MapDrawLayer(SpriteAtlas atlas, Shader prog)
-    : vao(0), ebo(0), map_buf(0), map_buf_tex(0), atlas(atlas), shader_prog(prog)
-{
     GLuint vbo;
     glGenBuffers(1, &vbo);
     GLuint ebo;
@@ -161,10 +164,10 @@ MapDrawLayer::MapDrawLayer(SpriteAtlas atlas, Shader prog)
     glBindVertexArray(this->vao);
 
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(QUAD_VERTS), QUAD_VERTS, GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, n_tiles * quad_elems * sizeof(f32), verts, GL_STATIC_DRAW);
 
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(QUAD_IDXS), QUAD_IDXS, GL_STATIC_DRAW);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, n_tiles * idx_elems * sizeof(u32), indices, GL_STATIC_DRAW);
 
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
@@ -172,53 +175,50 @@ MapDrawLayer::MapDrawLayer(SpriteAtlas atlas, Shader prog)
     glEnableVertexAttribArray(1);
 
     glBindVertexArray(0);
+
+    tile_atlas = make_texture(atlas_image);
+
+    scratch_arena.reinit();
 }
 
-void MapDrawLayer::buffer_map(const TileMap* tiles)
+// TODO:
+// I have yet to come up with a consistent "render" function interface.
+// Do I pass shaders? Or do I have some immediate-mode api thru which I can
+// use and set uniforms? Or option C? Dunno what is better.
+//
+// For now I'm doing this
+void BatchedTileRenderer::render(Viewport& viewport, Shader shader)
 {
-    if (this->map_buf != 0) {
-        std::cout << "rebuffering map!" << std::endl;
-        return;
-    }
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    auto screen_transform = viewport.get_screen_transform();
 
-    int mapsize = WORLD_SIZE_TILES;
-
-    glGenBuffers(1, &this->map_buf);
-    glBindBuffer(GL_TEXTURE_BUFFER, this->map_buf);
-    glBufferData(GL_TEXTURE_BUFFER, mapsize * sizeof(u16), tiles->tile_sprites, GL_STATIC_DRAW);
-
-    glGenTextures(1, &this->map_buf_tex);
-    glBindTexture(GL_TEXTURE_BUFFER, this->map_buf_tex);
-    glTexBuffer(GL_TEXTURE_BUFFER, GL_R16UI, this->map_buf);
-}
-
-void render_map(const MapDrawLayer& map)
-{
-    glUseProgram(map.shader_prog.id);
+    glm::mat4 world_transform(1.0);
+    world_transform = glm::scale(world_transform, glm::vec3(8.0, -8.0, 0));
+    world_transform = glm::translate(world_transform, glm::vec3(0.0, -WORLD_HEIGHT_TILES, 0.0));
 
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D_ARRAY, map.atlas.id);
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_BUFFER, map.map_buf_tex);
+    glBindTexture(GL_TEXTURE_2D, tile_atlas.id);
 
-    glUniform1ui(glGetUniformLocation(map.shader_prog.id, "width"), 40);
-    glUniform1ui(glGetUniformLocation(map.shader_prog.id, "height"), 23);
-    glUniform1i(glGetUniformLocation(map.shader_prog.id, "atlas"), 0);
-    glUniform1i(glGetUniformLocation(map.shader_prog.id, "tiles"), 1);
+    glUseProgram(shader.id);
+    glUniformMatrix4fv(glGetUniformLocation(shader.id, "world"), 1, GL_FALSE, glm::value_ptr(world_transform));
+    glUniformMatrix4fv(glGetUniformLocation(shader.id, "screen"), 1, GL_FALSE, glm::value_ptr(screen_transform));
+    glUniform1i(glGetUniformLocation(shader.id, "atlas"), 0);
 
-    glBindVertexArray(map.vao);
-    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-
-    glBindVertexArray(0);
+    glBindVertexArray(vao);
+    glDrawElements(GL_TRIANGLES, 6 * n_tiles, GL_UNSIGNED_INT, 0);
 }
 
-Texture::Texture(int w, int h)
+Texture alloc_texture(int w, int h)
 {
-    glGenTextures(1, &this->id);
-    glBindTexture(GL_TEXTURE_2D, this->id);
+    Texture tex;
 
-    glTexParameteri(
-      GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_LINEAR);
+    glGenTextures(1, &tex.id);
+    glBindTexture(GL_TEXTURE_2D, tex.id);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glTexImage2D(GL_TEXTURE_2D,
                  0,
@@ -231,19 +231,22 @@ Texture::Texture(int w, int h)
                  nullptr);
     glGenerateMipmap(GL_TEXTURE_2D);
     glBindTexture(GL_TEXTURE_2D, 0);
+
+    return tex;
 }
 
-Texture::Texture(int w, int h, ubyte* data)
+Texture make_texture(int w, int h, ubyte* data)
 {
-    glGenTextures(1, &this->id);
-    std::cout << "Gen tex " << this->id << ", wxh: " << w << " " << h << std::endl;
-    glBindTexture(GL_TEXTURE_2D, this->id);
+    Texture tex;
 
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAX_LEVEL, 1);
+    glGenTextures(1, &tex.id);
+    glBindTexture(GL_TEXTURE_2D, tex.id);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    //glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAX_LEVEL, 1);
     glTexImage2D(GL_TEXTURE_2D,
                  0,
                  GL_RGBA,
@@ -255,6 +258,8 @@ Texture::Texture(int w, int h, ubyte* data)
                  data);
     glGenerateMipmap(GL_TEXTURE_2D);
     glBindTexture(GL_TEXTURE_2D, 0);
+
+    return tex;
 }
 
 Quad::Quad(rigel::Rectangle rect, Shader shader)
@@ -284,6 +289,42 @@ Quad::Quad(rigel::Rectangle rect, Shader shader)
     glEnableVertexAttribArray(1);
 
     glBindVertexArray(0);
+}
+
+Texture make_texture(ImageResource image)
+{
+    return make_texture(image.width, image.height, image.data);
+}
+
+Texture make_array_texture_from_vstrip(ImageResource image, usize n_images)
+{
+    Texture tex;
+    glGenTextures(1, &tex.id);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, tex.id);
+
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAX_LEVEL, 1);
+
+    usize slice_height = image.height / n_images;
+
+    glTexImage3D(GL_TEXTURE_2D_ARRAY,
+                 0,
+                 GL_RGBA8,
+                 image.width,
+                 slice_height,
+                 n_images,
+                 0,
+                 GL_RGBA,
+                 GL_UNSIGNED_BYTE,
+                 image.data);
+
+    // Do I need this?
+    // glGenerateMipmap(GL_TEXTURE_2D_ARRAY);
+
+    return tex;
 }
 
 void
@@ -423,68 +464,76 @@ void GpuQuad::initialize()
     glBindVertexArray(0);
 }
 
-SpriteLibrary::SpriteLibrary()
+Shader* get_renderable_shader(mem::Arena* gfx_arena, TextResource vs_src, TextResource fs_src)
 {
-    for (int i = 0; i < MAX_ATLAS_SPRITES; i++) {
-        loaded_sprites[i].resource_id = SPRITE_RESOURCE_ID_NONE;
-    }
+    RenderableAssets* assets = reinterpret_cast<RenderableAssets*>(gfx_arena->mem_begin);
+    ShaderLookup* ready_shaders = assets->ready_shaders;
+
+    usize next_idx = ready_shaders->next_free_shader_idx;
+    assert(next_idx < 64 && "Too many shaders at once");
+    Shader* result = ready_shaders->shaders + next_idx;
+    result->load_from_src(vs_src.text, fs_src.text);
+
+    return result;
 }
 
-Sprite*
-SpriteLibrary::lookup(SpriteResourceId id)
+// TODO: can have a global RenderableAssets pointer since
+// gfx arena will never move.
+Texture* get_renderable_texture(mem::Arena* gfx_arena, ResourceId sprite_id)
 {
-    auto hash = id & (MAX_ATLAS_SPRITES - 1);
-    if (loaded_sprites[hash].resource_id == id) {
-        return sprites + loaded_sprites[hash].idx;
+    RenderableAssets* assets = reinterpret_cast<RenderableAssets*>(gfx_arena->mem_begin);
+    TextureLookup* ready_textures = assets->ready_textures;
+
+    auto map_idx = sprite_id % 64;
+    auto map_entry = ready_textures->map + map_idx;
+    if (map_entry->resource_id == sprite_id) {
+        return ready_textures->textures + map_entry->texture_idx;
     }
-    return nullptr;
+
+    if (map_entry->resource_id < 0) {
+        usize next_idx = ready_textures->next_free_texture_idx;
+        assert(next_idx < 64 && "Too many textures at once");
+
+        Texture* result = ready_textures->textures + next_idx;
+
+        ImageResource image_resource = get_image_resource(sprite_id);
+        if (image_resource.n_frames == 1) {
+            *result = make_texture(image_resource);
+        } else {
+            *result = make_array_texture_from_vstrip(image_resource, image_resource.n_frames);
+        }
+
+        map_entry->resource_id = map_idx;
+        map_entry->texture_idx = next_idx;
+
+        ready_textures->next_free_texture_idx++;
+
+        return result;
+    }
+
+    assert(false && "Implement open addressing already you nerd");
 }
 
-SpriteResourceId
-SpriteLibrary::load_sprite(SpriteResourceId resource_id,
-                         usize width,
-                         usize height,
-                         ubyte* data)
+void make_world_chunk_renderable(mem::GameMem* memory, WorldChunk* world_chunk, ImageResource tile_set)
 {
-    assert(next_free_idx + 1 < MAX_ATLAS_SPRITES &&
-           "Trying to load too many sprites");
+    auto gfx_arena = &memory->gfx_arena;
+    auto scratch_arena = &memory->scratch_arena;
 
-    auto sprite = lookup(resource_id);
-    if (sprite != nullptr) {
-        return sprite->id;
-    }
+    RenderableAssets* assets = reinterpret_cast<RenderableAssets*>(gfx_arena->mem_begin);
+    WorldChunkDrawData* draw_data = assets->renderable_world_chunk;
 
-    GLuint tex_id;
-    glGenTextures(1, &tex_id);
-    glBindTexture(GL_TEXTURE_2D, tex_id);
-    glTexParameteri(
-      GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexImage2D(GL_TEXTURE_2D,
-                 0,
-                 GL_RGBA,
-                 width,
-                 height,
-                 0,
-                 GL_RGBA,
-                 GL_UNSIGNED_BYTE,
-                 data);
-    glGenerateMipmap(GL_TEXTURE_2D);
-    glBindTexture(GL_TEXTURE_2D, 0);
+    TileMap* map = world_chunk->active_map;
 
-    i32 sprite_idx = next_free_idx;
-    next_free_idx++;
-    // TODO: use the sprite's texture id
-    auto hash = resource_id & (MAX_ATLAS_SPRITES - 1);
-    loaded_sprites[hash].idx = sprite_idx;
-    loaded_sprites[hash].resource_id = resource_id;
+    draw_data->fg_renderer = BatchedTileRenderer(*scratch_arena, map, tile_set);
+    draw_data->bg_renderer = BatchedTileRenderer(*scratch_arena, map->background, tile_set);
+    draw_data->deco_renderer = BatchedTileRenderer(*scratch_arena, map->decoration, tile_set);
+}
 
-    sprites[sprite_idx].id = resource_id;
-    sprites[sprite_idx].tex_id = tex_id;
-    sprites[sprite_idx].width = width;
-    sprites[sprite_idx].height = height;
-
-    return resource_id;
+// TODO: don't think I need this fn
+void make_entity_renderable(mem::Arena* gfx_arena, entity::Entity* e)
+{
+    Texture* entity_sprite = get_renderable_texture(gfx_arena, e->sprite_id);
+    e->sprite_id = entity_sprite->ready_idx;
 }
 
 static RenderState render_state;
@@ -508,7 +557,7 @@ const char* screen_fs_src = "#version 400 core\n"
                             "FragColor = texture(game, tex_uv);\n"
                             "}";
 
-void initialize_renderer(f32 fb_width, f32 fb_height)
+void initialize_renderer(mem::Arena* gfx_arena, f32 fb_width, f32 fb_height)
 {
     // global UBO
     glGenBuffers(1, &render_state.global_ubo);
@@ -518,11 +567,22 @@ void initialize_renderer(f32 fb_width, f32 fb_height)
 
     render_state.internal_target.w = 320;
     render_state.internal_target.h = 180;
-    //Texture fb_texture("astro2.png");
-    Texture fb_texture(render_state.internal_target.w, render_state.internal_target.h);
-    render_state.texture = fb_texture;
+    render_state.texture = alloc_texture(render_state.internal_target.w, render_state.internal_target.h);
 
-    render_state.screen_shader.load_from_src(screen_vs_src, screen_fs_src);
+    Shader* screen_shader = &game_shaders[SCREEN_SHADER];
+    // TODO: use proper resources here
+    screen_shader->load_from_src(screen_vs_src, screen_fs_src);
+
+    Shader* map_shader = &game_shaders[TILEMAP_DRAW_SHADER];
+    TextResource map_shader_vs = load_text_resource("resource/shader/vs_map_batched.glsl");
+    TextResource map_shader_fs = load_text_resource("resource/shader/fs_map_batched.glsl");
+    map_shader->load_from_src(map_shader_vs.text, map_shader_fs.text);
+
+    Shader* entity_shader = &game_shaders[ENTITY_DRAW_SHADER];
+    TextResource entity_shader_vs = load_text_resource("resource/shader/vs_entity.glsl");
+    TextResource entity_shader_fs = load_text_resource("resource/shader/fs_entity.glsl");
+    entity_shader->load_from_src(entity_shader_vs.text, entity_shader_fs.text);
+
     render_state.screen.initialize();
 
     // create the internal framebuffer
@@ -538,6 +598,15 @@ void initialize_renderer(f32 fb_width, f32 fb_height)
 
     render_state.fb_width = fb_width;
     render_state.fb_height = fb_height;
+
+    RenderableAssets* assets = reinterpret_cast<RenderableAssets*>(gfx_arena->mem_begin);
+    assets->ready_shaders = gfx_arena->alloc_simple<ShaderLookup>();
+    assets->ready_textures = gfx_arena->alloc_simple<TextureLookup>();
+    for (i32 i = 0; i < 64; i++) {
+        assets->ready_textures->map[i].resource_id = RESOURCE_ID_NONE;
+        assets->ready_textures->map[i].texture_idx = RESOURCE_ID_NONE;
+    }
+    assets->renderable_world_chunk = gfx_arena->alloc_simple<WorldChunkDrawData>();
 }
 
 void begin_render(f32 fb_width, f32 fb_height)
@@ -546,24 +615,106 @@ void begin_render(f32 fb_width, f32 fb_height)
     render_state.fb_height = fb_height;
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    render_state.current_viewport.x = 0;
+    render_state.current_viewport.y = 0;
+    render_state.current_viewport.w = fb_width;
+    render_state.current_viewport.h = fb_height;
+
     glViewport(0, 0, render_state.fb_width, render_state.fb_height);
-    glClearColor(0, 0, 0, 1);
+    glClearColor(0.0941, 0.0784, 0.10196, 1);
     glClear(GL_COLOR_BUFFER_BIT);
 
     // TODO: send down global uniforms here
 }
 
+void render_background_layer(mem::Arena* gfx_arena, Viewport& viewport)
+{
+    RenderableAssets* assets = reinterpret_cast<RenderableAssets*>(gfx_arena->mem_begin);
+    WorldChunkDrawData* draw_data = assets->renderable_world_chunk;
+
+    draw_data->bg_renderer.render(viewport, game_shaders[TILEMAP_DRAW_SHADER]);
+}
+
+void render_foreground_layer(mem::Arena* gfx_arena, Viewport& viewport)
+{
+    RenderableAssets* assets = reinterpret_cast<RenderableAssets*>(gfx_arena->mem_begin);
+    WorldChunkDrawData* draw_data = assets->renderable_world_chunk;
+
+    draw_data->fg_renderer.render(viewport, game_shaders[TILEMAP_DRAW_SHADER]);
+}
+
+void render_decoration_layer(mem::Arena* gfx_arena, Viewport& viewport)
+{
+    RenderableAssets* assets = reinterpret_cast<RenderableAssets*>(gfx_arena->mem_begin);
+    WorldChunkDrawData* draw_data = assets->renderable_world_chunk;
+
+    draw_data->deco_renderer.render(viewport, game_shaders[TILEMAP_DRAW_SHADER]);
+}
+
+void render_all_entities(mem::Arena* gfx_arena, Viewport& viewport, WorldChunk* world_chunk, usize temp_anim_frame)
+{
+    RenderableAssets* assets = reinterpret_cast<RenderableAssets*>(gfx_arena->mem_begin);
+    TextureLookup* texture_lookup = assets->ready_textures;
+
+    auto screen = viewport.get_screen_transform();
+    for (EntityId eid = 0; eid < world_chunk->next_free_entity_idx; eid++) {
+        auto e = world_chunk->entities + eid;
+        Texture* e_sprite = get_renderable_texture(gfx_arena, e->sprite_id);
+        ImageResource img_resource = get_image_resource(e->sprite_id);
+
+        f32 vertical_scale = img_resource.height / img_resource.n_frames;
+        glm::mat4 world(1.0f);
+        // TODO: should have the concept of a sprite offset somewhere
+        world = glm::translate(world, glm::vec3(e->position.x - 6, e->position.y, 0));
+        world = glm::scale(world, glm::vec3(img_resource.width, vertical_scale, 0.0f));
+
+        auto shader = game_shaders[ENTITY_DRAW_SHADER];
+        glUseProgram(shader.id);
+        glUniformMatrix4fv(glGetUniformLocation(shader.id, "screen"),
+                        1,
+                        false,
+                        glm::value_ptr(screen));
+        glUniformMatrix4fv(glGetUniformLocation(shader.id, "world"),
+                        1,
+                        false,
+                        glm::value_ptr(world));
+        glUniform1i(glGetUniformLocation(shader.id, "anim_frame"), temp_anim_frame);
+        glUniform1i(glGetUniformLocation(shader.id, "sprite"), 0);
+        usize facing_mult = e->velocity.x > 0 ? 1 : -1;
+        glUniform1i(glGetUniformLocation(shader.id, "facing_mult"), facing_mult);
+
+        glBindTexture(GL_TEXTURE_2D_ARRAY, e_sprite->id);
+
+        // TODO: screen tho? I mean, ideally we'd batch
+        glBindVertexArray(render_state.screen.vao);
+        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+        glBindVertexArray(0);
+    }
+}
+
 void begin_render_to_target(RenderTarget target)
 {
     glBindFramebuffer(GL_FRAMEBUFFER, target.target_framebuf);
+
+    render_state.current_viewport.x = 0;
+    render_state.current_viewport.y = 0;
+    render_state.current_viewport.w = target.w;
+    render_state.current_viewport.h = target.h;
+
     glViewport(0, 0, target.w, target.h);
-    glClearColor(0, 0, 0, 1);
+    glClearColor(0.0941, 0.0784, 0.10196, 1);
+    //glClearColor(0, 0, 0, 1);
     glClear(GL_COLOR_BUFFER_BIT);
 }
 
 void end_render_to_target()
 {
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    render_state.current_viewport.x = 0;
+    render_state.current_viewport.y = 0;
+    render_state.current_viewport.w = render_state.fb_width;
+    render_state.current_viewport.h = render_state.fb_height;
     glViewport(0, 0, render_state.fb_width, render_state.fb_height);
 }
 
@@ -573,7 +724,7 @@ void end_render()
     f32 fb_width = render_state.internal_target.w;
     f32 fb_height = render_state.internal_target.h;
     GpuQuad screen = render_state.screen;
-    Shader screen_shader = render_state.screen_shader;
+    Shader screen_shader = game_shaders[SCREEN_SHADER];
     f32 scale_factor = 4.0;
 
     glm::mat4 world_transform(1.0f);
@@ -606,40 +757,8 @@ void end_render()
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
     glBindVertexArray(0);
 
-}
+    // TODO: sdl stuff
 
-void render_stage_background_layer(Viewport& viewport, Texture& texture, Shader& shader)
-{
-    auto quad = render_state.screen;
-
-    glm::mat4 world_transform(1.0f);
-    world_transform = glm::scale(world_transform, glm::vec3(RENDER_INTERNAL_WIDTH, RENDER_INTERNAL_HEIGHT, 0.0f));
-    world_transform = glm::translate(world_transform, glm::vec3(-0.5, -0.5, 0));
-
-    glm::mat4 screen_transform(1.0f);
-    screen_transform = glm::scale(
-      screen_transform,
-      glm::vec3((2.0 / RENDER_INTERNAL_WIDTH),
-                (2.0 / RENDER_INTERNAL_HEIGHT), 0));
-
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, texture.id);
-
-    glUseProgram(shader.id);
-    glUniformMatrix4fv(glGetUniformLocation(shader.id, "world_transform"),
-                       1,
-                       false,
-                       glm::value_ptr(world_transform));
-
-    glUniformMatrix4fv(glGetUniformLocation(shader.id, "screen_transform"),
-                       1,
-                       false,
-                       glm::value_ptr(screen_transform));
-    glUniform1i(glGetUniformLocation(shader.id, "graphic"), 0);
-
-    glBindVertexArray(quad.vao);
-    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-    glBindVertexArray(0);
 }
 
 RenderTarget internal_target()
@@ -647,6 +766,15 @@ RenderTarget internal_target()
     return render_state.internal_target;
 }
 
+void draw_rectangle(Rectangle rect, f32 r, f32 g, f32 b)
+{
+    // real dull way to just draw a rectangle
+    glEnable(GL_SCISSOR_TEST);
+    glScissor(rect.x, rect.y, rect.w, rect.h);
+    glClearColor(r, g, b, 1.0);
+    glClear(GL_COLOR_BUFFER_BIT);
+    glDisable(GL_SCISSOR_TEST);
+}
 
 } // namespace render
 } // namespace rigel
