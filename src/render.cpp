@@ -71,6 +71,9 @@ Shader::load_from_src(const char* vs_src, const char* fs_src)
     if (!check_shader_status(this->id, true)) {
         std::cerr << "link failed" << std::endl;
     }
+
+    u32 uniform_block = glGetUniformBlockIndex(this->id, "GlobalUniforms");
+    glUniformBlockBinding(this->id, uniform_block, 0);
 }
 
 Shader::Shader(const char* vs_src, const char* fs_src)
@@ -202,7 +205,7 @@ void BatchedTileRenderer::render(Viewport& viewport, Shader shader)
 
     glUseProgram(shader.id);
     glUniformMatrix4fv(glGetUniformLocation(shader.id, "world"), 1, GL_FALSE, glm::value_ptr(world_transform));
-    glUniformMatrix4fv(glGetUniformLocation(shader.id, "screen"), 1, GL_FALSE, glm::value_ptr(screen_transform));
+    //glUniformMatrix4fv(glGetUniformLocation(shader.id, "screen"), 1, GL_FALSE, glm::value_ptr(screen_transform));
     glUniform1i(glGetUniformLocation(shader.id, "atlas"), 0);
 
     glBindVertexArray(vao);
@@ -464,9 +467,12 @@ void GpuQuad::initialize()
     glBindVertexArray(0);
 }
 
-Shader* get_renderable_shader(mem::Arena* gfx_arena, TextResource vs_src, TextResource fs_src)
+// RENDER_STATE
+static RenderState render_state;
+
+Shader* get_renderable_shader(TextResource vs_src, TextResource fs_src)
 {
-    RenderableAssets* assets = reinterpret_cast<RenderableAssets*>(gfx_arena->mem_begin);
+    RenderableAssets* assets = reinterpret_cast<RenderableAssets*>(render_state.gfx_arena->mem_begin);
     ShaderLookup* ready_shaders = assets->ready_shaders;
 
     usize next_idx = ready_shaders->next_free_shader_idx;
@@ -479,9 +485,9 @@ Shader* get_renderable_shader(mem::Arena* gfx_arena, TextResource vs_src, TextRe
 
 // TODO: can have a global RenderableAssets pointer since
 // gfx arena will never move.
-Texture* get_renderable_texture(mem::Arena* gfx_arena, ResourceId sprite_id)
+Texture* get_renderable_texture(ResourceId sprite_id)
 {
-    RenderableAssets* assets = reinterpret_cast<RenderableAssets*>(gfx_arena->mem_begin);
+    RenderableAssets* assets = reinterpret_cast<RenderableAssets*>(render_state.gfx_arena->mem_begin);
     TextureLookup* ready_textures = assets->ready_textures;
 
     auto map_idx = sprite_id % 64;
@@ -514,12 +520,9 @@ Texture* get_renderable_texture(mem::Arena* gfx_arena, ResourceId sprite_id)
     assert(false && "Implement open addressing already you nerd");
 }
 
-void make_world_chunk_renderable(mem::GameMem* memory, WorldChunk* world_chunk, ImageResource tile_set)
+void make_world_chunk_renderable(mem::Arena* scratch_arena, WorldChunk* world_chunk, ImageResource tile_set)
 {
-    auto gfx_arena = &memory->gfx_arena;
-    auto scratch_arena = &memory->scratch_arena;
-
-    RenderableAssets* assets = reinterpret_cast<RenderableAssets*>(gfx_arena->mem_begin);
+    RenderableAssets* assets = reinterpret_cast<RenderableAssets*>(render_state.gfx_arena->mem_begin);
     WorldChunkDrawData* draw_data = assets->renderable_world_chunk;
 
     TileMap* map = world_chunk->active_map;
@@ -528,15 +531,6 @@ void make_world_chunk_renderable(mem::GameMem* memory, WorldChunk* world_chunk, 
     draw_data->bg_renderer = BatchedTileRenderer(*scratch_arena, map->background, tile_set);
     draw_data->deco_renderer = BatchedTileRenderer(*scratch_arena, map->decoration, tile_set);
 }
-
-// TODO: don't think I need this fn
-void make_entity_renderable(mem::Arena* gfx_arena, entity::Entity* e)
-{
-    Texture* entity_sprite = get_renderable_texture(gfx_arena, e->sprite_id);
-    e->sprite_id = entity_sprite->ready_idx;
-}
-
-static RenderState render_state;
 
 const char* screen_vs_src = "#version 400 core\n"
                             "layout (location = 0) in vec3 vert;\n"
@@ -557,17 +551,44 @@ const char* screen_fs_src = "#version 400 core\n"
                             "FragColor = texture(game, tex_uv);\n"
                             "}";
 
+RenderTarget make_render_to_texture_target(i32 w, i32 h)
+{
+    RenderTarget result;
+
+    result.w = w;
+    result.h = h;
+    result.target_texture = alloc_texture(w, h);
+
+    // create the internal framebuffer
+    glGenFramebuffers(1, &result.target_framebuf);
+    glBindFramebuffer(GL_FRAMEBUFFER, result.target_framebuf);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, result.target_texture.id, 0);
+
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+        std::cout << "ERROR::FRAMEBUFFER:: Framebuffer is not complete!" << std::endl;
+    }
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    return result;
+}
+
 void initialize_renderer(mem::Arena* gfx_arena, f32 fb_width, f32 fb_height)
 {
+    render_state.gfx_arena = gfx_arena;
+
     // global UBO
     glGenBuffers(1, &render_state.global_ubo);
     glBindBuffer(GL_UNIFORM_BUFFER, render_state.global_ubo);
     glBufferData(GL_UNIFORM_BUFFER, sizeof(GlobalUniforms), nullptr, GL_STATIC_DRAW);
+    glBindBufferBase(GL_UNIFORM_BUFFER, 0, render_state.global_ubo);
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
-    render_state.internal_target.w = 320;
-    render_state.internal_target.h = 180;
-    render_state.texture = alloc_texture(render_state.internal_target.w, render_state.internal_target.h);
+    render_state.internal_target = make_render_to_texture_target(320, 180);
+
+    render_state.screen_target.w = fb_width;
+    render_state.screen_target.h = fb_height;
+    render_state.screen_target.target_framebuf = 0;
 
     Shader* screen_shader = &game_shaders[SCREEN_SHADER];
     // TODO: use proper resources here
@@ -585,20 +606,6 @@ void initialize_renderer(mem::Arena* gfx_arena, f32 fb_width, f32 fb_height)
 
     render_state.screen.initialize();
 
-    // create the internal framebuffer
-    glGenFramebuffers(1, &render_state.internal_target.target_framebuf);
-    glBindFramebuffer(GL_FRAMEBUFFER, render_state.internal_target.target_framebuf);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, render_state.texture.id, 0);
-
-    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-        std::cout << "ERROR::FRAMEBUFFER:: Framebuffer is not complete!" << std::endl;
-    }
-
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-    render_state.fb_width = fb_width;
-    render_state.fb_height = fb_height;
-
     RenderableAssets* assets = reinterpret_cast<RenderableAssets*>(gfx_arena->mem_begin);
     assets->ready_shaders = gfx_arena->alloc_simple<ShaderLookup>();
     assets->ready_textures = gfx_arena->alloc_simple<TextureLookup>();
@@ -609,10 +616,10 @@ void initialize_renderer(mem::Arena* gfx_arena, f32 fb_width, f32 fb_height)
     assets->renderable_world_chunk = gfx_arena->alloc_simple<WorldChunkDrawData>();
 }
 
-void begin_render(f32 fb_width, f32 fb_height)
+void begin_render(Viewport& viewport, GameState* game_state, f32 fb_width, f32 fb_height)
 {
-    render_state.fb_width = fb_width;
-    render_state.fb_height = fb_height;
+    render_state.screen_target.w = fb_width;
+    render_state.screen_target.h = fb_height;
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
@@ -621,46 +628,57 @@ void begin_render(f32 fb_width, f32 fb_height)
     render_state.current_viewport.w = fb_width;
     render_state.current_viewport.h = fb_height;
 
-    glViewport(0, 0, render_state.fb_width, render_state.fb_height);
+    glViewport(0, 0, render_state.screen_target.w, render_state.screen_target.h);
+    // NOTE: retrieved from tilesheet
     glClearColor(0.0941, 0.0784, 0.10196, 1);
     glClear(GL_COLOR_BUFFER_BIT);
 
-    // TODO: send down global uniforms here
+    // TODO: obs should have lights be their own thing somewhere
+    auto player = game_state->active_world_chunk->entities;
+
+    GlobalUniforms global_uniforms;
+    global_uniforms.screen_transform = viewport.get_screen_transform();
+    global_uniforms.point_lights[0] = glm::vec4(player->position, 0.0);
+    global_uniforms.point_lights[1] = glm::vec4(160.0, 100.0, 0.0, 0.0);
+
+    glBindBuffer(GL_UNIFORM_BUFFER, render_state.global_ubo);
+    glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(GlobalUniforms), &global_uniforms);
+    glBindBuffer(GL_UNIFORM_BUFFER, 0);
 }
 
-void render_background_layer(mem::Arena* gfx_arena, Viewport& viewport)
+void render_background_layer(Viewport& viewport)
 {
-    RenderableAssets* assets = reinterpret_cast<RenderableAssets*>(gfx_arena->mem_begin);
+    RenderableAssets* assets = reinterpret_cast<RenderableAssets*>(render_state.gfx_arena->mem_begin);
     WorldChunkDrawData* draw_data = assets->renderable_world_chunk;
 
     draw_data->bg_renderer.render(viewport, game_shaders[TILEMAP_DRAW_SHADER]);
 }
 
-void render_foreground_layer(mem::Arena* gfx_arena, Viewport& viewport)
+void render_foreground_layer(Viewport& viewport)
 {
-    RenderableAssets* assets = reinterpret_cast<RenderableAssets*>(gfx_arena->mem_begin);
+    RenderableAssets* assets = reinterpret_cast<RenderableAssets*>(render_state.gfx_arena->mem_begin);
     WorldChunkDrawData* draw_data = assets->renderable_world_chunk;
 
     draw_data->fg_renderer.render(viewport, game_shaders[TILEMAP_DRAW_SHADER]);
 }
 
-void render_decoration_layer(mem::Arena* gfx_arena, Viewport& viewport)
+void render_decoration_layer(Viewport& viewport)
 {
-    RenderableAssets* assets = reinterpret_cast<RenderableAssets*>(gfx_arena->mem_begin);
+    RenderableAssets* assets = reinterpret_cast<RenderableAssets*>(render_state.gfx_arena->mem_begin);
     WorldChunkDrawData* draw_data = assets->renderable_world_chunk;
 
     draw_data->deco_renderer.render(viewport, game_shaders[TILEMAP_DRAW_SHADER]);
 }
 
-void render_all_entities(mem::Arena* gfx_arena, Viewport& viewport, WorldChunk* world_chunk, usize temp_anim_frame)
+void render_all_entities(Viewport& viewport, WorldChunk* world_chunk, usize temp_anim_frame)
 {
-    RenderableAssets* assets = reinterpret_cast<RenderableAssets*>(gfx_arena->mem_begin);
+    RenderableAssets* assets = reinterpret_cast<RenderableAssets*>(render_state.gfx_arena->mem_begin);
     TextureLookup* texture_lookup = assets->ready_textures;
 
     auto screen = viewport.get_screen_transform();
     for (EntityId eid = 0; eid < world_chunk->next_free_entity_idx; eid++) {
         auto e = world_chunk->entities + eid;
-        Texture* e_sprite = get_renderable_texture(gfx_arena, e->sprite_id);
+        Texture* e_sprite = get_renderable_texture(e->sprite_id);
         ImageResource img_resource = get_image_resource(e->sprite_id);
 
         f32 vertical_scale = img_resource.height / img_resource.n_frames;
@@ -681,8 +699,8 @@ void render_all_entities(mem::Arena* gfx_arena, Viewport& viewport, WorldChunk* 
                         glm::value_ptr(world));
         glUniform1i(glGetUniformLocation(shader.id, "anim_frame"), temp_anim_frame);
         glUniform1i(glGetUniformLocation(shader.id, "sprite"), 0);
-        usize facing_mult = e->velocity.x > 0 ? 1 : -1;
-        glUniform1i(glGetUniformLocation(shader.id, "facing_mult"), facing_mult);
+        //usize facing_mult = e->velocity.x >= 0 ? 1 : -1;
+        glUniform1i(glGetUniformLocation(shader.id, "facing_mult"), e->facing_dir.last_observed_sign);
 
         glBindTexture(GL_TEXTURE_2D_ARRAY, e_sprite->id);
 
@@ -708,14 +726,25 @@ void begin_render_to_target(RenderTarget target)
     glClear(GL_COLOR_BUFFER_BIT);
 }
 
+
+void begin_render_to_internal_target()
+{
+    begin_render_to_target(render_state.internal_target);
+}
+
 void end_render_to_target()
 {
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
     render_state.current_viewport.x = 0;
     render_state.current_viewport.y = 0;
-    render_state.current_viewport.w = render_state.fb_width;
-    render_state.current_viewport.h = render_state.fb_height;
-    glViewport(0, 0, render_state.fb_width, render_state.fb_height);
+    render_state.current_viewport.w = render_state.screen_target.w;
+    render_state.current_viewport.h = render_state.screen_target.h;
+
+    glViewport(render_state.current_viewport.x,
+               render_state.current_viewport.y,
+               render_state.current_viewport.w,
+               render_state.current_viewport.h);
 }
 
 void end_render()
@@ -735,11 +764,11 @@ void end_render()
     //screen_transform = glm::translate(screen_transform, glm::vec3(-0.5, -0.5, 0));
     screen_transform = glm::scale(
       screen_transform,
-      glm::vec3(scale_factor * (2.0 / render_state.fb_width),
-                -scale_factor * (2.0 / render_state.fb_height), 0));
+      glm::vec3(scale_factor * (2.0 / render_state.screen_target.w),
+                -scale_factor * (2.0 / render_state.screen_target.h), 0));
 
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, render_state.texture.id);
+    glBindTexture(GL_TEXTURE_2D, render_state.internal_target.target_texture.id);
 
     glUseProgram(screen_shader.id);
     glUniformMatrix4fv(glGetUniformLocation(screen_shader.id, "screen_transform"),

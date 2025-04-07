@@ -4,6 +4,8 @@
 #include "render.h"
 #include "collider.h"
 #include "json.h"
+#include "game.h"
+
 
 #include <SDL3/SDL.h>
 #include <glm/glm.hpp>
@@ -12,14 +14,26 @@
 #include <iostream>
 #include <sys/mman.h>
 
+/*
+
+ TODO:
+
+ Things are looking much better in here.
+
+ Threads to pull on:
+ - we need a proper math lib. if we could get rid of glm i'd be super happy too. This may
+   be a good task for a slow day.
+ - pull player behavior out into a more final place. Was thinking a brain sorta abstraction,
+   but I dunno.
+ - start laying in lighting.
+ - there is work to do on collision, but collision is a bloody pit.
+ - level loading needs work. i think it's time to rip out tinyxml and say thanks for your service.
+ - gotta figure out switching between screens/rooms. i have a feeling that this will be the next
+   major architectural thing to figure out, but part of me suspects it might not be so complicated.
+
+*/
 
 namespace rigel {
-
-// TODO: what is this and where does it go
-struct GameState
-{
-    WorldChunk* active_world_chunk;
-};
 
 InputState g_input_state;
 
@@ -36,7 +50,6 @@ f32 abs(f32 val)
 {
     return val * signof(val);
 }
-
 
 mem::GameMem
 initialize_game_memory()
@@ -86,13 +99,6 @@ initialize_game_memory()
     std::cout << "resource: " << (mem_ptr*)memory.resource_arena.mem_begin << " for " << memory.resource_arena.arena_bytes << " bytes" << std::endl;
     std::cout << "gfx: " << (mem_ptr*)memory.gfx_arena.mem_begin << " for " << memory.gfx_arena.arena_bytes << " bytes" << std::endl;
     return memory;
-}
-
-GameState*
-initialize_game_state(mem::GameMem& memory)
-{
-    GameState* state = memory.game_state_arena.alloc_simple<GameState>();
-    return state;
 }
 
 
@@ -156,7 +162,6 @@ int main()
 
     render::initialize_renderer(&memory.gfx_arena, w, h);
 
-
     Rectangle player_collider = { .x = 0, .y = 0, .w = 7, .h = 17 };
     ImageResource player_sprite = load_image_resource("resource/image/pcoutline.png", 5);
 
@@ -165,7 +170,7 @@ int main()
     game_state->active_world_chunk->add_player(memory, player_sprite.resource_id, glm::vec3(40, 64, 0), player_collider);
 
     ImageResource tilesheet = load_image_resource("resource/image/tranquil_tunnels_green_packed.png");
-    render::make_world_chunk_renderable(&memory, game_state->active_world_chunk, tilesheet);
+    render::make_world_chunk_renderable(&memory.scratch_arena, game_state->active_world_chunk, tilesheet);
 
     render::Viewport viewport;
     viewport.zoom(1.0);
@@ -257,14 +262,12 @@ int main()
                 f32 dt = delta_update_time / 1000000000.0f; // to seconds
                 //std::cout << dt << std::endl;
 
-                entity::Entity* player = game_state->active_world_chunk->entities;
+                Entity* player = game_state->active_world_chunk->entities;
 
-                f32 dt2 = dt*dt;
-                glm::vec3 new_pos = player->position + player->velocity*dt + player->acceleration*(dt2*0.5f);
                 glm::vec3 new_acc = glm::vec3(0.0f);
 
                 f32 gravity = -600; // TODO: grav
-                if ((player->state_flags & entity::STATE_ON_LAND) > 0) {
+                if ((player->state_flags & STATE_ON_LAND) > 0) {
                     gravity = 0;
                 }
                 new_acc.y += gravity;
@@ -282,20 +285,20 @@ int main()
                     new_acc.x -= 40 * player->velocity.x;
                 }
 
-                glm::vec3 new_vel = player->velocity + (player->acceleration + new_acc)*(dt*0.5f);
 
                 if (g_input_state.jump_requested) {
-                    entity::state_transition_land_to_jump(player);
+                    state_transition_land_to_jump(player);
                     g_input_state.jump_requested = false;
-                    new_vel.y = 180;
+                    player->velocity.y = 180;
                 }
 
-                if (abs(new_vel.x) > 100) {
-                    new_vel.x = 100 * signof(new_vel.x);
-                }
-                if ((player->state_flags & entity::STATE_ON_LAND) == 0) {
+                player->acceleration = new_acc;
+                move_entity(player, game_state->active_world_chunk->active_map, dt);
+
+                // TODO: This has gotta go somewhere better
+                if ((player->state_flags & STATE_ON_LAND) == 0) {
                     anim_frame = 1;
-                } else if (abs(new_vel.x) > 0.1) {
+                } else if (abs(player->velocity.x) > 0.1) {
                     anim_time += delta_update_time;
                     if (anim_time > 120000000) {
                         anim_frame++;
@@ -308,74 +311,9 @@ int main()
                     anim_frame = 0;
                     anim_time = 0;
                 }
+                update_zero_cross_trigger(&player->facing_dir, player->velocity.x);
 
-                AABB player_aabb = player->colliders->aabbs[0];
-                player_aabb.center = player->position + player_aabb.extents;
-
-                glm::vec3 player_displacement = new_pos - player->position;
-                broad_player_aabb.center = (player_aabb.center) + (0.5f*player_displacement);
-                broad_player_aabb.extents = player_aabb.extents + glm::abs(0.5f*player_displacement);
-
-                glm::vec3 tl = glm::vec3(broad_player_aabb.center.x - broad_player_aabb.extents.x,
-                                         broad_player_aabb.center.y + broad_player_aabb.extents.y, 0);
-                glm::vec3 br = glm::vec3(broad_player_aabb.center.x + broad_player_aabb.extents.x,
-                                         broad_player_aabb.center.y - broad_player_aabb.extents.y, 0);
-                glm::vec2 tile_min = world_to_tiles(tl);
-                glm::vec2 tile_max = world_to_tiles(br);
-
-                //std::cout << "Min: " << tile_min.x << "," << tile_min.y << std::endl;
-                //std::cout << "Max: " << tile_max.x << "," << tile_max.y << std::endl;
-
-                TileMap* map = game_state->active_world_chunk->active_map;
-
-                for (isize tile_y = tile_min.y; tile_y <= tile_max.y; tile_y++) {
-                    for (isize tile_x = tile_min.x; tile_x <= tile_max.x; tile_x++) {
-                        player_aabb.center = player->position + player_aabb.extents;
-
-                        usize tile_index = tile_to_index(tile_x, tile_y);
-                        if (tile_index >= WORLD_SIZE_TILES || map->tiles[tile_index] == TileType::EMPTY) {
-                            continue;
-                        }
-
-                        AABB tile_aabb;
-                        tile_aabb.extents = glm::vec3(4, 4, 0);
-                        tile_aabb.center = tiles_to_world(tile_x, tile_y) + tile_aabb.extents;
-
-                        CollisionResult result = collide_AABB_with_static_AABB(&player_aabb,
-                                                                               &tile_aabb,
-                                                                               player_displacement);
-
-                        if (result.t_to_collide >= 0) {
-                            if (result.t_to_collide == 0) {
-                                auto correction = result.penetration_axis * result.depth;
-                                player->position += correction;
-                                new_pos += correction;
-                                glm::vec3 norm = glm::vec3(-result.penetration_axis.y, result.penetration_axis.x, 0);
-                                new_vel = glm::dot(new_vel, norm) * norm;
-                                new_acc = glm::dot(new_acc, norm) * norm;
-                            } else {
-                                player->position += result.t_to_collide * player_displacement;
-                                glm::vec3 remainder = result.depth * result.penetration_axis;
-                                glm::vec3 norm = glm::vec3(-result.penetration_axis.y, result.penetration_axis.x, 0);
-
-                                new_pos = player->position + (glm::dot(remainder, norm) * norm);
-                                new_vel = glm::dot(new_vel, norm) * norm;
-                                new_acc = glm::dot(new_acc, norm) * norm;
-                                player_displacement = new_pos - player->position;
-                            }
-                            if (result.penetration_axis.y > 0) {
-                                entity::state_transition_air_to_land(player);
-                            }
-                        }
-                    }
-                }
-
-                player->position = new_pos;
-                player->velocity = new_vel;
-                player->acceleration = new_acc;
                 delta_update_time -= UPDATE_TIME_NS;
-
-                //std::cout << player->velocity.x << "," << player->velocity.y << std::endl;
             }
 
             SDL_GetCurrentTime(&last_update_time);
@@ -383,32 +321,27 @@ int main()
 
         i64 delta_render_time = iter_time - last_render_time;
         if (delta_render_time >= RENDER_TIME_NS) {
-            render::begin_render(w, h);
+            render::begin_render(viewport, game_state, w, h);
 
             render::begin_render_to_target(render::internal_target());
-            // i am lost in the sauce and i need to keep this simple or else i will never complete it!
-            //
-            // _all_ scenes will have:
-            // - a background "effect" shader layer that is aaaaall the way in the background.
-            // - a background tile layer
-            // - a foreground tile & sprite layer
-            // - a decoration tile layer
-            //
-            // that's it! don't start into a crazy generic layered pipeline just yet!
 
-            render::render_background_layer(&memory.gfx_arena, viewport);
+            render::render_background_layer(viewport);
 
-            //entity::Entity* player = game_state->active_world_chunk->entities;
-            //Rectangle player_rect = rect_from_aabb(player->colliders->aabbs[0]);
-            //player_rect.x = player->position.x;
-            //player_rect.y = player->position.y;
-            //render::draw_rectangle(rect_from_aabb(broad_player_aabb), 0.0, 1.0, 0.0);
-            //render::draw_rectangle(player_rect, 1.0, 0.0, 0.0);
+#if 0
+            // TODO: I need a debug renderer that will let me do this stuff
+            // from anywhere in the codebase, even it all it does is draw lines.
+            Entity* player = game_state->active_world_chunk->entities;
+            Rectangle player_rect = rect_from_aabb(player->colliders->aabbs[0]);
+            player_rect.x = player->position.x;
+            player_rect.y = player->position.y;
+            render::draw_rectangle(rect_from_aabb(broad_player_aabb), 0.0, 1.0, 0.0);
+            render::draw_rectangle(player_rect, 1.0, 0.0, 0.0);
+#endif
 
-            render::render_all_entities(&memory.gfx_arena, viewport, game_state->active_world_chunk, anim_frame);
+            render::render_all_entities(viewport, game_state->active_world_chunk, anim_frame);
 
-            render::render_foreground_layer(&memory.gfx_arena, viewport);
-            render::render_decoration_layer(&memory.gfx_arena, viewport);
+            render::render_foreground_layer(viewport);
+            render::render_decoration_layer(viewport);
 
             render::end_render_to_target();
 

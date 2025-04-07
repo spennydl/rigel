@@ -6,10 +6,10 @@
 #include "rigel.h"
 #include "collider.h"
 #include "resource.h"
+#include "tilemap.h"
+#include "timer.h"
 
 namespace rigel {
-namespace entity {
-
 
 enum EntityStateFlag
 {
@@ -39,17 +39,23 @@ struct Entity
     EntityType type;
     SpriteResourceId sprite_id;
 
+    // TODO: we are not using all of this
     f32 jump_time;
     u32 state_flags;
     glm::vec3 position;
-    // TODO: we should try to do without this one
+
     glm::vec3 position_err;
     glm::vec3 velocity;
     glm::vec3 acceleration;
     glm::vec3 forces;
 
+    ZeroCrossTrigger facing_dir;
+
+    // TODO: this should just be a rectangle. No multiple colliders.
     ColliderSet* colliders;
 };
+
+void move_entity(Entity* entity, TileMap* tile_map, f32 dt);
 
 inline void state_transition_air_to_land(Entity* e)
 {
@@ -83,7 +89,6 @@ inline void state_transition_fall_exclusive(Entity* e)
     e->state_flags = flags;
 }
 
-} // namespace entity
 } // namespace rigel
 
 #endif // ENTITY_H_

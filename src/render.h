@@ -5,6 +5,7 @@
 #include "resource.h"
 #include "collider.h"
 #include "world.h"
+#include "game.h"
 
 #include "glm/glm.hpp"
 #include <glad/gl.h>
@@ -124,7 +125,6 @@ constexpr static usize MAX_ATLAS_SPRITES = 256;
 
 constexpr static usize SPRITE_BYTES_PER_PIXEL = 4;
 
-
 struct ResourceTextureMapping
 {
     ResourceId resource_id;
@@ -151,7 +151,7 @@ struct WorldChunkDrawData
     BatchedTileRenderer bg_renderer;
     BatchedTileRenderer deco_renderer;
 };
-void make_world_chunk_renderable(mem::GameMem* memory, WorldChunk* world_chunk, ImageResource tile_set);
+void make_world_chunk_renderable(mem::Arena* scratch_mem, WorldChunk* world_chunk, ImageResource tile_set);
 
 struct RenderableAssets
 {
@@ -162,8 +162,8 @@ struct RenderableAssets
     WorldChunkDrawData* renderable_world_chunk;
 };
 
-Shader* get_renderable_shader(mem::Arena* gfx_arena, TextResource vs_src, TextResource fs_src);
-Texture* get_renderable_texture(mem::Arena* gfx_arena, ResourceId sprite_id);
+Shader* get_renderable_shader(TextResource vs_src, TextResource fs_src);
+Texture* get_renderable_texture(ResourceId sprite_id);
 
 struct GpuQuad
 {
@@ -177,15 +177,16 @@ struct RenderTarget
     i32 w;
     i32 h;
     GLuint target_framebuf;
+    Texture target_texture;
 };
 
 RenderTarget create_new_render_target();
 
 struct GlobalUniforms
 {
-    glm::vec3 viewport_world_pos;
+    glm::mat4 screen_transform;
+    glm::vec4 point_lights[24];
 };
-static GlobalUniforms GLOBAL_UNIFORMS;
 
 enum GameShaders {
     SCREEN_SHADER = 0,
@@ -196,23 +197,27 @@ enum GameShaders {
 
 struct RenderState
 {
-    GLuint global_ubo;
+    mem::Arena* gfx_arena;
+
     RenderTarget internal_target;
-    Texture texture;
+    RenderTarget screen_target;
     GpuQuad screen;
-    f32 fb_width;
-    f32 fb_height;
+
     Rectangle current_viewport;
+
+    // TODO: should this be here?
+    GLuint global_ubo;
 };
 
 void initialize_renderer(mem::Arena* gfx_arena, f32 fb_width, f32 fb_height);
 
-void begin_render(f32 fb_width, f32 fb_height);
-void render_foreground_layer(mem::Arena* gfx_arena, Viewport& viewport);
-void render_background_layer(mem::Arena* gfx_arena, Viewport& viewport);
-void render_decoration_layer(mem::Arena* gfx_arena, Viewport& viewport);
-void render_all_entities(mem::Arena* gfx_arena, Viewport& viewport, WorldChunk* world_chunk, usize temp_anim_frame);
+void begin_render(Viewport& vp, GameState* game_state, f32 fb_width, f32 fb_height);
+void render_foreground_layer(Viewport& viewport);
+void render_background_layer(Viewport& viewport);
+void render_decoration_layer(Viewport& viewport);
+void render_all_entities(Viewport& viewport, WorldChunk* world_chunk, usize temp_anim_frame);
 
+void begin_render_to_internal_target();
 void begin_render_to_target(RenderTarget target);
 void end_render_to_target();
 
