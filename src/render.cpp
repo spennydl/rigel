@@ -3,7 +3,7 @@
 #include "resource.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
-#include <glad/gl.h>
+#include <glad/glad.h>
 
 // TODO: remove
 #include <string>
@@ -18,6 +18,7 @@ namespace rigel {
 namespace render {
 
 static Shader game_shaders[N_GAME_SHADERS];
+static RenderState render_state;
 
 bool
 check_shader_status(GLuint id, bool prog)
@@ -203,13 +204,19 @@ void BatchedTileRenderer::render(Viewport& viewport, Shader shader)
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, tile_atlas.id);
 
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, render_state.shadowmap_target.target_texture.id);
+
     glUseProgram(shader.id);
     glUniformMatrix4fv(glGetUniformLocation(shader.id, "world"), 1, GL_FALSE, glm::value_ptr(world_transform));
     //glUniformMatrix4fv(glGetUniformLocation(shader.id, "screen"), 1, GL_FALSE, glm::value_ptr(screen_transform));
     glUniform1i(glGetUniformLocation(shader.id, "atlas"), 0);
+    glUniform1i(glGetUniformLocation(shader.id, "shadow_map"), 1);
 
     glBindVertexArray(vao);
     glDrawElements(GL_TRIANGLES, 6 * n_tiles, GL_UNSIGNED_INT, 0);
+    glBindVertexArray(0);
+    glUseProgram(0);
 }
 
 Texture alloc_texture(int w, int h)
@@ -327,6 +334,27 @@ Texture make_array_texture_from_vstrip(ImageResource image, usize n_images)
     // Do I need this?
     // glGenerateMipmap(GL_TEXTURE_2D_ARRAY);
 
+    return tex;
+}
+
+Texture alloc_array_texture(usize w, usize h, usize layers, usize internal_format)
+{
+    Texture tex;
+    glGenTextures(1, &tex.id);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, tex.id);
+
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAX_LEVEL, 1);
+
+    glTexImage3D(GL_TEXTURE_2D_ARRAY,
+                 0,
+                 internal_format,
+                 w, h, layers,
+                 0,
+                 internal_format, GL_UNSIGNED_BYTE, nullptr);
     return tex;
 }
 
@@ -467,8 +495,6 @@ void GpuQuad::initialize()
     glBindVertexArray(0);
 }
 
-// RENDER_STATE
-static RenderState render_state;
 
 Shader* get_renderable_shader(TextResource vs_src, TextResource fs_src)
 {
@@ -557,6 +583,7 @@ RenderTarget make_render_to_texture_target(i32 w, i32 h)
 
     result.w = w;
     result.h = h;
+    result.l = 1;
     result.target_texture = alloc_texture(w, h);
 
     // create the internal framebuffer
@@ -573,6 +600,21 @@ RenderTarget make_render_to_texture_target(i32 w, i32 h)
     return result;
 }
 
+RenderTarget make_render_to_array_texture_target(i32 w, i32 h, i32 layers, usize format)
+{
+    RenderTarget result;
+    result.w = w;
+    result.h = h;
+    result.l = layers;
+    result.target_texture = alloc_array_texture(w, h, layers, format);
+
+    glGenFramebuffers(1, &result.target_framebuf);
+    glBindFramebuffer(GL_FRAMEBUFFER, result.target_framebuf);
+    // NOTE: wrong call?
+    glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, result.target_texture.id, 0);
+    return result;
+}
+
 void initialize_renderer(mem::Arena* gfx_arena, f32 fb_width, f32 fb_height)
 {
     render_state.gfx_arena = gfx_arena;
@@ -585,6 +627,8 @@ void initialize_renderer(mem::Arena* gfx_arena, f32 fb_width, f32 fb_height)
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
     render_state.internal_target = make_render_to_texture_target(320, 180);
+
+    render_state.shadowmap_target = make_render_to_array_texture_target(320, 180, 24, GL_RGBA);
 
     render_state.screen_target.w = fb_width;
     render_state.screen_target.h = fb_height;
@@ -640,15 +684,37 @@ void begin_render(Viewport& viewport, GameState* game_state, f32 fb_width, f32 f
 
     // TODO: obs should have lights be their own thing somewhere
     auto player = game_state->active_world_chunk->entities;
+    auto player_collider = player->colliders->aabbs[0];
+    glm::vec3 player_center = player->position + player_collider.extents;
 
-    GlobalUniforms global_uniforms;
-    global_uniforms.screen_transform = viewport.get_screen_transform();
-    global_uniforms.point_lights[0] = glm::vec4(player->position, 0.0);
-    global_uniforms.point_lights[1] = glm::vec4(160.0, 100.0, 0.0, 0.0);
+    render_state.global_uniforms.screen_transform = viewport.get_screen_transform();
+    render_state.global_uniforms.point_lights[0] = glm::vec4(player_center, 0.0);
+    render_state.global_uniforms.point_lights[1] = glm::vec4(160.0, 100.0, 0.0, 0.0);
 
     glBindBuffer(GL_UNIFORM_BUFFER, render_state.global_ubo);
-    glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(GlobalUniforms), &global_uniforms);
+    glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(GlobalUniforms), &render_state.global_uniforms);
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
+}
+
+void lighting_pass(mem::Arena* scratch_arena, TileMap* tile_map)
+{
+    // TODO
+    usize n_lights = 2;
+
+    Shader shadow_shader = game_shaders[TILE_OCCLUDER_SHADER];
+
+    // TODO: this needs to remember a stack of targets!
+    // It also may not clear correctly? Lots of questions with this one.
+    begin_render_to_target(render_state.shadowmap_target);
+    for (usize light_idx = 0;
+         light_idx < n_lights;
+         light_idx++)
+    {
+        glm::vec3 point_light = render_state.global_uniforms.point_lights[light_idx];
+        make_shadow_map_for_point_light(scratch_arena, tile_map, point_light, light_idx);
+    }
+    end_render_to_target();
+
 }
 
 void render_background_layer(Viewport& viewport)
@@ -675,7 +741,7 @@ void render_decoration_layer(Viewport& viewport)
     draw_data->deco_renderer.render(viewport, game_shaders[TILEMAP_DRAW_SHADER]);
 }
 
-void make_shadow_map_for_point_light(mem::Arena* scratch_arena, TileMap* tile_map, glm::vec3 light_pos)
+void make_shadow_map_for_point_light(mem::Arena* scratch_arena, TileMap* tile_map, glm::vec3 light_pos, i32 light_index)
 {
     // we just need vec2 verts
     usize n_tiles = tile_map->n_nonempty_tiles;
@@ -780,6 +846,8 @@ void make_shadow_map_for_point_light(mem::Arena* scratch_arena, TileMap* tile_ma
     world_transform = glm::translate(world_transform, glm::vec3(0.0, -WORLD_HEIGHT_TILES * TILE_WIDTH_PIXELS, 0.0));
     glUniformMatrix4fv(glGetUniformLocation(shader.id, "world"), 1, GL_FALSE, glm::value_ptr(world_transform));
 
+    glUniform1i(glGetUniformLocation(shader.id, "light_idx"), light_index);
+
     glDrawElements(GL_TRIANGLES, 6 * quad_idx, GL_UNSIGNED_INT, 0);
 
     scratch_arena->reinit();
@@ -817,12 +885,14 @@ void render_all_entities(Viewport& viewport, WorldChunk* world_chunk, usize temp
         //usize facing_mult = e->velocity.x >= 0 ? 1 : -1;
         glUniform1i(glGetUniformLocation(shader.id, "facing_mult"), e->facing_dir.last_observed_sign);
 
+        glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D_ARRAY, e_sprite->id);
 
         // TODO: screen tho? I mean, ideally we'd batch
         glBindVertexArray(render_state.screen.vao);
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
         glBindVertexArray(0);
+        glUseProgram(0);
     }
 }
 

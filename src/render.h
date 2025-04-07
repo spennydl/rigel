@@ -8,7 +8,7 @@
 #include "game.h"
 
 #include "glm/glm.hpp"
-#include <glad/gl.h>
+#include <glad/glad.h>
 
 #include <string>
 
@@ -176,6 +176,7 @@ struct RenderTarget
 {
     i32 w;
     i32 h;
+    i32 l;
     GLuint target_framebuf;
     Texture target_texture;
 };
@@ -202,21 +203,24 @@ struct RenderState
 
     RenderTarget internal_target;
     RenderTarget screen_target;
+    RenderTarget shadowmap_target;
     GpuQuad screen;
 
     Rectangle current_viewport;
 
     // TODO: should this be here?
     GLuint global_ubo;
+    GlobalUniforms global_uniforms;
 };
 
 void initialize_renderer(mem::Arena* gfx_arena, f32 fb_width, f32 fb_height);
 
 void begin_render(Viewport& vp, GameState* game_state, f32 fb_width, f32 fb_height);
+void lighting_pass(mem::Arena* scratch_arena, TileMap* tile_map);
 void render_foreground_layer(Viewport& viewport);
 void render_background_layer(Viewport& viewport);
 void render_decoration_layer(Viewport& viewport);
-void make_shadow_map_for_point_light(mem::Arena* scratch_arena, TileMap* tile_map, glm::vec3 light_pos);
+void make_shadow_map_for_point_light(mem::Arena* scratch_arena, TileMap* tile_map, glm::vec3 light_pos, i32 light_idx);
 void render_all_entities(Viewport& viewport, WorldChunk* world_chunk, usize temp_anim_frame);
 
 void begin_render_to_internal_target();

@@ -10,7 +10,7 @@
 #include <SDL3/SDL.h>
 #include <glm/glm.hpp>
 #include <SDL3/SDL_time.h>
-#include <glad/gl.h>
+#include <glad/glad.h>
 #include <iostream>
 #include <sys/mman.h>
 
@@ -145,7 +145,7 @@ int main()
 
     SDL_GLContext context = SDL_GL_CreateContext(window);
 
-    int version = gladLoadGL((GLADloadfunc) SDL_GL_GetProcAddress);
+    int version = gladLoadGL();
     std::cout << "Loaded version " << version << std::endl;
 
     int tex_units;
@@ -324,10 +324,11 @@ int main()
         if (delta_render_time >= RENDER_TIME_NS) {
             render::begin_render(viewport, game_state, w, h);
 
-            render::begin_render_to_target(render::internal_target());
+            render::lighting_pass(&memory.scratch_arena, game_state->active_world_chunk->active_map);
+
+            render::begin_render_to_internal_target();
 
             render::render_background_layer(viewport);
-
 #if 0
             // TODO: I need a debug renderer that will let me do this stuff
             // from anywhere in the codebase, even it all it does is draw lines.
@@ -340,9 +341,6 @@ int main()
 
             render::render_all_entities(viewport, game_state->active_world_chunk, anim_frame);
 
-
-            Entity* player = game_state->active_world_chunk->entities;
-            render::make_shadow_map_for_point_light(&memory.scratch_arena, game_state->active_world_chunk->active_map, player->position);
             render::render_foreground_layer(viewport);
             render::render_decoration_layer(viewport);
 
