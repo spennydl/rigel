@@ -604,6 +604,11 @@ void initialize_renderer(mem::Arena* gfx_arena, f32 fb_width, f32 fb_height)
     TextResource entity_shader_fs = load_text_resource("resource/shader/fs_entity.glsl");
     entity_shader->load_from_src(entity_shader_vs.text, entity_shader_fs.text);
 
+    Shader* shadow_shader = &game_shaders[TILE_OCCLUDER_SHADER];
+    TextResource shadow_shader_vs = load_text_resource("resource/shader/vs_shadowmap.glsl");
+    TextResource shadow_shader_fs = load_text_resource("resource/shader/fs_shadowmap.glsl");
+    shadow_shader->load_from_src(shadow_shader_vs.text, shadow_shader_fs.text);
+
     render_state.screen.initialize();
 
     RenderableAssets* assets = reinterpret_cast<RenderableAssets*>(gfx_arena->mem_begin);
@@ -668,6 +673,116 @@ void render_decoration_layer(Viewport& viewport)
     WorldChunkDrawData* draw_data = assets->renderable_world_chunk;
 
     draw_data->deco_renderer.render(viewport, game_shaders[TILEMAP_DRAW_SHADER]);
+}
+
+void make_shadow_map_for_point_light(mem::Arena* scratch_arena, TileMap* tile_map, glm::vec3 light_pos)
+{
+    // we just need vec2 verts
+    usize n_tiles = tile_map->n_nonempty_tiles;
+    usize elems_per_quad = 4 * 3; // 4 verts, 3 components each
+    usize idx_elems_per_quad = 6;
+    f32* verts = scratch_arena->alloc_array<f32>(n_tiles * elems_per_quad * 4); // times 2 since we output max 2 quads per tile
+    u32* indices = scratch_arena->alloc_array<u32>(n_tiles * idx_elems_per_quad * 4);
+
+    usize quad_idx = 0;
+
+    glm::vec2 light_tilespace = glm::vec2(light_pos.x, 180.0f - light_pos.y);
+    //glm::vec2 light_tilespace = world_to_tiles(light_pos) * glm::vec2(TILE_WIDTH_PIXELS, TILE_WIDTH_PIXELS);
+    for (usize y = 0; y < WORLD_HEIGHT_TILES; y++)
+    {
+        for (usize x = 0; x < WORLD_WIDTH_TILES; x++)
+        {
+            glm::vec2 dir_to_light = glm::vec2(x * TILE_WIDTH_PIXELS, y * TILE_WIDTH_PIXELS) - light_tilespace;
+            usize i = tile_to_index(x, y);
+
+            if (tile_map->tiles[i] == TileType::EMPTY)
+            {
+                continue;
+            }
+
+            glm::vec2 tile_verts[] = {
+                glm::vec2(x * TILE_WIDTH_PIXELS, y * TILE_WIDTH_PIXELS),
+                glm::vec2((x * TILE_WIDTH_PIXELS) + TILE_WIDTH_PIXELS, y * TILE_WIDTH_PIXELS),
+                glm::vec2((x * TILE_WIDTH_PIXELS) + TILE_WIDTH_PIXELS, (y * TILE_WIDTH_PIXELS) + TILE_WIDTH_PIXELS),
+                glm::vec2(x * TILE_WIDTH_PIXELS, (y * TILE_WIDTH_PIXELS) + TILE_WIDTH_PIXELS)
+            };
+
+            for (usize edge_start = 0; edge_start < 4; edge_start++)
+            {
+                usize edge_end = edge_start + 1;
+                if (edge_end >= 4)
+                {
+                    edge_end = 0;
+                }
+
+                glm::vec2 edge = tile_verts[edge_end] - tile_verts[edge_start];
+                glm::vec2 norm(-edge.y, edge.x);
+                if (glm::dot(norm, dir_to_light) <= 0)
+                {
+                    continue;
+                }
+
+                glm::vec2 end_from_light = tile_verts[edge_end] - light_tilespace;
+                glm::vec2 start_from_light = tile_verts[edge_start] - light_tilespace;
+
+                usize quad_start = quad_idx * elems_per_quad;
+                verts[quad_start] = tile_verts[edge_start].x;
+                verts[quad_start + 1] = tile_verts[edge_start].y;
+                verts[quad_start + 2] = 1.0;
+
+                verts[quad_start + 3] = tile_verts[edge_end].x;
+                verts[quad_start + 4] = tile_verts[edge_end].y;
+                verts[quad_start + 5] = 1.0;
+
+                verts[quad_start + 6] = end_from_light.x;
+                verts[quad_start + 7] = end_from_light.y;
+                verts[quad_start + 8] = 0.0;
+
+                verts[quad_start + 9] = start_from_light.x;
+                verts[quad_start + 10] = start_from_light.y;
+                verts[quad_start + 11] = 0.0;
+
+                usize idxs_start = quad_idx * idx_elems_per_quad;
+                usize quad_elems_start = quad_idx * 4;
+                indices[idxs_start] = quad_elems_start + 0;
+                indices[idxs_start + 1] = quad_elems_start + 1;
+                indices[idxs_start + 2] = quad_elems_start + 2;
+                indices[idxs_start + 3] = quad_elems_start + 2;
+                indices[idxs_start + 4] = quad_elems_start + 3;
+                indices[idxs_start + 5] = quad_elems_start + 0;
+
+                quad_idx += 1;
+            }
+        }
+    }
+
+    glBindVertexArray(0);
+
+    GLuint vbo;
+    glGenBuffers(1, &vbo);
+    GLuint ebo;
+    glGenBuffers(1, &ebo);
+
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glBufferData(GL_ARRAY_BUFFER, quad_idx * elems_per_quad * sizeof(f32), verts, GL_STATIC_DRAW);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, quad_idx * idx_elems_per_quad * sizeof(u32), indices, GL_STATIC_DRAW);
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+
+    auto shader = game_shaders[TILE_OCCLUDER_SHADER];
+    glUseProgram(shader.id);
+
+    glm::mat4 world_transform(1.0);
+    world_transform = glm::scale(world_transform, glm::vec3(1.0, -1.0, 0));
+    world_transform = glm::translate(world_transform, glm::vec3(0.0, -WORLD_HEIGHT_TILES * TILE_WIDTH_PIXELS, 0.0));
+    glUniformMatrix4fv(glGetUniformLocation(shader.id, "world"), 1, GL_FALSE, glm::value_ptr(world_transform));
+
+    glDrawElements(GL_TRIANGLES, 6 * quad_idx, GL_UNSIGNED_INT, 0);
+
+    scratch_arena->reinit();
 }
 
 void render_all_entities(Viewport& viewport, WorldChunk* world_chunk, usize temp_anim_frame)

@@ -193,6 +193,7 @@ int main()
     usize anim_frame = 0;
 
     while (running) {
+        memory.scratch_arena.reinit();
 
         while (SDL_PollEvent(&event)) {
             // quick and dirty for now
@@ -330,7 +331,6 @@ int main()
 #if 0
             // TODO: I need a debug renderer that will let me do this stuff
             // from anywhere in the codebase, even it all it does is draw lines.
-            Entity* player = game_state->active_world_chunk->entities;
             Rectangle player_rect = rect_from_aabb(player->colliders->aabbs[0]);
             player_rect.x = player->position.x;
             player_rect.y = player->position.y;
@@ -340,6 +340,9 @@ int main()
 
             render::render_all_entities(viewport, game_state->active_world_chunk, anim_frame);
 
+
+            Entity* player = game_state->active_world_chunk->entities;
+            render::make_shadow_map_for_point_light(&memory.scratch_arena, game_state->active_world_chunk->active_map, player->position);
             render::render_foreground_layer(viewport);
             render::render_decoration_layer(viewport);
 

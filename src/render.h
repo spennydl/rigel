@@ -192,6 +192,7 @@ enum GameShaders {
     SCREEN_SHADER = 0,
     TILEMAP_DRAW_SHADER,
     ENTITY_DRAW_SHADER,
+    TILE_OCCLUDER_SHADER,
     N_GAME_SHADERS
 };
 
@@ -215,6 +216,7 @@ void begin_render(Viewport& vp, GameState* game_state, f32 fb_width, f32 fb_heig
 void render_foreground_layer(Viewport& viewport);
 void render_background_layer(Viewport& viewport);
 void render_decoration_layer(Viewport& viewport);
+void make_shadow_map_for_point_light(mem::Arena* scratch_arena, TileMap* tile_map, glm::vec3 light_pos);
 void render_all_entities(Viewport& viewport, WorldChunk* world_chunk, usize temp_anim_frame);
 
 void begin_render_to_internal_target();
