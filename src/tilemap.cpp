@@ -6,7 +6,6 @@
 #include <tinyxml2.h>
 #include <iostream>
 #include <sstream>
-#include <glm/glm.hpp>
 
 namespace rigel {
 auto
@@ -35,8 +34,6 @@ parse_tile_csv(const char* csv, TileMap* map)
     usize n_nonempty = 0;
 
     int map_size = WORLD_SIZE_TILES;
-
-    // glm::mat4* transforms = new glm::mat4[MAP_SIZE];
 
     std::istringstream csvin(csv);
     while (std::getline(csvin, line)) {

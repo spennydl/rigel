@@ -6,8 +6,8 @@
 #include "collider.h"
 #include "world.h"
 #include "game.h"
+#include "rigelmath.h"
 
-#include "glm/glm.hpp"
 #include <glad/glad.h>
 
 #include <string>
@@ -31,13 +31,13 @@ class Viewport
 {
   public:
     explicit Viewport()
-      : position(0, 4, 0)
+      : position {0.0f, 4.0f, 0.0f}
       , scale(1.0)
       , width(RENDER_INTERNAL_WIDTH)
       , height(RENDER_INTERNAL_HEIGHT)
     {
     }
-    Viewport(glm::vec3 position)
+    Viewport(m::Vec3 position)
       : position(position)
       , scale(1.0)
       , width(RENDER_INTERNAL_WIDTH)
@@ -45,13 +45,13 @@ class Viewport
     {
     }
 
-    void translate(glm::vec3 by);
+    void translate(m::Vec3 by);
     void zoom(float factor);
-    glm::mat4 get_screen_transform() const;
-    glm::vec3 get_position() const noexcept;
+    m::Mat4 get_screen_transform() const;
+    m::Vec3 get_position() const noexcept;
 
   private:
-    glm::vec3 position;
+    m::Vec3 position;
     f32 scale;
     f32 width;
     f32 height;
@@ -94,11 +94,11 @@ struct Quad
 struct Tri
 {
     GLuint vao;
-    glm::vec3 verts[3];
+    m::Vec3 verts[3];
     Shader shader;
 
     // Quad(Rectangle rect);
-    Tri(glm::vec3 v1, glm::vec3 v2, glm::vec3 v3, Shader shader);
+    Tri(m::Vec3 v1, m::Vec3 v2, m::Vec3 v3, Shader shader);
 };
 
 void
@@ -187,15 +187,15 @@ RenderTarget create_new_render_target();
 
 struct UniformLight
 {
-    glm::vec4 position;
-    glm::vec4 color;
-    glm::vec4 data;
+    m::Vec4 position;
+    m::Vec4 color;
+    m::Vec4 data;
 };
 
 struct GlobalUniforms
 {
-    glm::mat4 screen_transform;
-    glm::vec4 point_lights[24];
+    m::Mat4 screen_transform;
+    m::Vec4 point_lights[24];
 };
 
 enum GameShaders {
@@ -229,7 +229,7 @@ void lighting_pass(mem::Arena* scratch_arena, TileMap* tile_map);
 void render_foreground_layer(Viewport& viewport);
 void render_background_layer(Viewport& viewport);
 void render_decoration_layer(Viewport& viewport);
-void make_shadow_map_for_point_light(mem::Arena* scratch_arena, TileMap* tile_map, glm::vec3 light_pos, i32 light_idx);
+void make_shadow_map_for_point_light(mem::Arena* scratch_arena, TileMap* tile_map, m::Vec3 light_pos, i32 light_idx);
 void render_all_entities(Viewport& viewport, WorldChunk* world_chunk, usize temp_anim_frame);
 
 void begin_render_to_internal_target();

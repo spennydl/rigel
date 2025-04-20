@@ -3,9 +3,6 @@
 #include "collider.h"
 #include "rigelmath.h"
 
-#include <cmath>
-#include <glm/glm.hpp>
-
 namespace rigel {
 
 AABB
@@ -16,10 +13,10 @@ entity_get_collider(Entity* entity)
     return result;
 }
 
-glm::vec3
-get_dda_step(glm::vec3 displacement)
+m::Vec3
+get_dda_step(m::Vec3 displacement)
 {
-    glm::vec3 result(0);
+    m::Vec3 result = {0};
 
     if (displacement.x == 0 && displacement.y == 0)
     {
@@ -45,12 +42,12 @@ get_dda_step(glm::vec3 displacement)
 bool
 collides_with_level(AABB aabb, TileMap* tile_map)
 {
-    glm::vec3 tl = glm::vec3(aabb.center.x - aabb.extents.x,
-                             aabb.center.y + aabb.extents.y, 0);
-    glm::vec3 br = glm::vec3(aabb.center.x + aabb.extents.x,
-                             aabb.center.y - aabb.extents.y, 0);
-    glm::vec2 tile_min = world_to_tiles(tl);
-    glm::vec2 tile_max = world_to_tiles(br);
+    m::Vec3 tl {aabb.center.x - aabb.extents.x,
+                aabb.center.y + aabb.extents.y, 0.0f};
+    m::Vec3 br {aabb.center.x + aabb.extents.x,
+                aabb.center.y - aabb.extents.y, 0.0f};
+    m::Vec2 tile_min = world_to_tiles(tl);
+    m::Vec2 tile_max = world_to_tiles(br);
 
     for (isize tile_y = tile_min.y; tile_y <= tile_max.y; tile_y++)
     {
@@ -62,10 +59,10 @@ collides_with_level(AABB aabb, TileMap* tile_map)
                 continue;
             }
             AABB tile_aabb;
-            tile_aabb.extents = glm::vec3(4, 4, 0);
+            tile_aabb.extents = {4.0f, 4.0f, 0.0f};
             tile_aabb.center = tiles_to_world(tile_x, tile_y) + tile_aabb.extents;
 
-            glm::vec3 result = simple_AABB_overlap(aabb, tile_aabb);
+            m::Vec3 result = simple_AABB_overlap(aabb, tile_aabb);
             if (result.x > 0 || result.y > 0) {
                 return true;
             }
@@ -87,11 +84,11 @@ move_entity(Entity* entity, TileMap* tile_map, f32 dt)
     //
     // glm::vec3 new_pos = player->position + player->velocity*dt + player->acceleration*(dt2*0.5f);
     // glm::vec3 new_vel = player->velocity + (player->acceleration + new_acc)*(dt*0.5f);
-    glm::vec3 new_pos = entity->position + entity->velocity*dt + entity->acceleration*(dt2*0.5f);
+    m::Vec3 new_pos = entity->position + entity->velocity*dt + entity->acceleration*(dt2*0.5f);
     //std::cout << "New pos is " << new_pos.x << "," << new_pos.y << std::endl;
     //std::cout << "v " << entity->velocity.x << "," << entity->velocity.y << std::endl;
     //std::cout << "a " << entity->acceleration.x << "," << entity->acceleration.y << std::endl;
-    glm::vec3 new_vel = entity->velocity + (entity->acceleration * dt);
+    m::Vec3 new_vel = entity->velocity + (entity->acceleration * dt);
 
     bool is_requesting_move = g_input_state.move_left_requested || g_input_state.move_right_requested;
     if (!is_requesting_move)
@@ -116,12 +113,12 @@ move_entity(Entity* entity, TileMap* tile_map, f32 dt)
     CollisionResult min_collision_result;
 
 
-    glm::vec3 dest_pixel = new_pos;
+    m::Vec3 dest_pixel = new_pos;
     dest_pixel.x = floorf(dest_pixel.x);
     dest_pixel.y = floorf(dest_pixel.y);
-    glm::vec3 dest_fract = glm::fract(new_pos);
+    m::Vec3 dest_fract = m::fract(new_pos);
 
-    glm::vec3 entity_pixel_position = glm::floor(entity->position);
+    m::Vec3 entity_pixel_position = m::floor(entity->position);
 
     AABB entity_aabb = entity_get_collider(entity);
     bool we_found_one = false;
@@ -129,20 +126,20 @@ move_entity(Entity* entity, TileMap* tile_map, f32 dt)
     f32 sqdist_to_dest;
     while (true) // TODO: we should really limit this
     {
-        sqdist_to_dest = F32_INF;//glm::dot(displacement, displacement);
-        glm::vec3 best_so_far = entity_pixel_position;
+        sqdist_to_dest = F32_INF;
+        m::Vec3 best_so_far = entity_pixel_position;
         we_found_one = false;
 
         for (i32 y = -1; y < 2; y++)
         {
             for (i32 x = -1; x < 2; x++)
             {
-                glm::vec3 offset(x, y, 0);
-                glm::vec3 test_pixel = entity_pixel_position + offset;
+                m::Vec3 offset {(f32)x, (f32)y, 0.0f};
+                m::Vec3 test_pixel = entity_pixel_position + offset;
                 entity_aabb.center = test_pixel + entity_aabb.extents;
 
-                glm::vec3 test_displacement = new_pos - test_pixel;
-                f32 test_sqdist = glm::dot(test_displacement, test_displacement);
+                m::Vec3 test_displacement = new_pos - test_pixel;
+                f32 test_sqdist = m::dot(test_displacement, test_displacement);
 
                 i32 i = ((2 - (y + 1)) * 3) + (x + 1);
                 collided[i] = collides_with_level(entity_aabb, tile_map);
@@ -180,7 +177,7 @@ move_entity(Entity* entity, TileMap* tile_map, f32 dt)
 
     if (sqdist_to_dest != 0)
     {
-        glm::vec3 to_dest = dest_pixel - new_pos;
+        m::Vec3 to_dest = dest_pixel - new_pos;
         i32 x_idx = (to_dest.x > 0) ? 5 : 3;
         i32 y_idx = (to_dest.y > 0) ? 1 : 7;
 

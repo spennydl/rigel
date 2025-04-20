@@ -1,27 +1,28 @@
 #include "rigel.h"
+#include "rigelmath.h"
 #include "collider.h"
 
 namespace rigel {
 
-glm::vec3 AABB_closest_to(AABB* aabb, glm::vec3 test)
+m::Vec3 AABB_closest_to(AABB* aabb, m::Vec3 test)
 {
     auto my_min = aabb->center - aabb->extents;
     auto my_max = aabb->center + aabb->extents;
-    glm::vec3 result(my_min.x, 0, 0);
-    float min_dist = std::abs(my_min.x - test.x);
+    m::Vec3 result {my_min.x, 0, 0};
+    float min_dist = m::abs(my_min.x - test.x);
 
-    if (std::abs(my_max.x - test.x) < min_dist) {
-        min_dist = std::abs(test.x - my_max.x);
+    if (m::abs(my_max.x - test.x) < min_dist) {
+        min_dist = m::abs(test.x - my_max.x);
         result.x = my_max.x;
         result.y = 0;
     }
-    if (std::abs(my_max.y - test.y) < min_dist) {
-        min_dist = std::abs(my_max.y - test.y);
+    if (m::abs(my_max.y - test.y) < min_dist) {
+        min_dist = m::abs(my_max.y - test.y);
         result.x = 0;
         result.y = my_max.y;
     }
-    if (std::abs(my_min.y - test.y) < min_dist) {
-        min_dist = std::abs(my_min.y - test.y);
+    if (m::abs(my_min.y - test.y) < min_dist) {
+        min_dist = m::abs(my_min.y - test.y);
         result.x = 0;
         result.y = my_min.y;
     }
@@ -32,7 +33,7 @@ glm::vec3 AABB_closest_to(AABB* aabb, glm::vec3 test)
 }
 
 CollisionResult
-collide_AABB_with_static_AABB(AABB* aabb, AABB* aabb_static, glm::vec3 displacement)
+collide_AABB_with_static_AABB(AABB* aabb, AABB* aabb_static, m::Vec3 displacement)
 {
     CollisionResult result;
     f32 min_depth = INFINITY;
@@ -55,9 +56,9 @@ collide_AABB_with_static_AABB(AABB* aabb, AABB* aabb_static, glm::vec3 displacem
         collision_is_in_future = true;
         min_depth = future_depth;
         f32 component = (aabb->center.x > aabb_static->center.x) ? 1 : -1;
-        result.penetration_axis = glm::vec3(component, 0, 0);
+        result.penetration_axis = {component, 0.0f, 0.0f};
         result.vdist_to_out = 0;
-        f32 displacement_length = glm::length(displacement);
+        f32 displacement_length = m::length(displacement);
         f32 t = (displacement_length - future_depth) / displacement_length;
         if (t > t_to_collide) {
             t_to_collide = t;
@@ -66,7 +67,7 @@ collide_AABB_with_static_AABB(AABB* aabb, AABB* aabb_static, glm::vec3 displacem
         // collision is now
         min_depth = depth;
         f32 component = (aabb->center.x > aabb_static->center.x) ? 1 : -1;
-        result.penetration_axis = glm::vec3(component, 0, 0);
+        result.penetration_axis = {component, 0.0f, 0.0f};
         result.vdist_to_out = 0;
     }
 
@@ -84,10 +85,10 @@ collide_AABB_with_static_AABB(AABB* aabb, AABB* aabb_static, glm::vec3 displacem
             collision_is_in_future = true;
             min_depth = future_depth;
 
-            f32 displacement_length = glm::length(displacement);
+            f32 displacement_length = m::length(displacement);
             f32 component = (aabb->center.y > aabb_static->center.y) ? 1 : -1;
 
-            result.penetration_axis = glm::vec3(0, component, 0);
+            result.penetration_axis = {0.0f, component, 0.0f};
             result.vdist_to_out = min_depth;
 
             f32 t = (displacement_length - future_depth) / displacement_length;
@@ -101,7 +102,7 @@ collide_AABB_with_static_AABB(AABB* aabb, AABB* aabb_static, glm::vec3 displacem
     if (!collision_is_in_future && depth < min_depth) {
         min_depth = depth;
         f32 component = (aabb->center.y > aabb_static->center.y) ? 1 : -1;
-        result.penetration_axis = glm::vec3(0, component, 0);
+        result.penetration_axis = {0.0f, component, 0.0f};
         result.vdist_to_out = min_depth;
         t_to_collide = 0;
     }
@@ -112,13 +113,12 @@ collide_AABB_with_static_AABB(AABB* aabb, AABB* aabb_static, glm::vec3 displacem
 }
 
 ColliderRaycastResult
-ray_intersect_AABB(AABB* aabb, glm::vec3 ray_origin, glm::vec3 ray_dir)
+ray_intersect_AABB(AABB* aabb, m::Vec3 ray_origin, m::Vec3 ray_dir)
 {
-    glm::vec3 p0 = aabb->center - aabb->extents;
-    glm::vec3 p1(aabb->center.x - aabb->extents.x, aabb->center.y  + aabb->extents.y, 0);
-    f32 min_t = INFINITY;
+    m::Vec3 p0 = aabb->center - aabb->extents;
+    m::Vec3 p1 {aabb->center.x - aabb->extents.x, aabb->center.y  + aabb->extents.y, 0.0f};
+    f32 min_t = F32_INF;
     ColliderRaycastResult result;
-
 
     auto d_axis = p1 - p0;
     auto d_origin = p0 - ray_origin;
@@ -134,7 +134,7 @@ ray_intersect_AABB(AABB* aabb, glm::vec3 ray_origin, glm::vec3 ray_dir)
         }
     }
 
-    glm::vec3 p2(aabb->center.x + aabb->extents.x, aabb->center.y + aabb->extents.y, 0);
+    m::Vec3 p2 {aabb->center.x + aabb->extents.x, aabb->center.y + aabb->extents.y, 0.0f};
     d_axis = p2 - p1;
     d_origin = p1 - ray_origin;
     det = (d_axis.x * ray_dir.y) - (d_axis.y * ray_dir.x);
@@ -149,7 +149,7 @@ ray_intersect_AABB(AABB* aabb, glm::vec3 ray_origin, glm::vec3 ray_dir)
         }
     }
 
-    glm::vec3 p3(aabb->center.x + aabb->extents.x, aabb->center.y - aabb->extents.y, 0);
+    m::Vec3 p3 {aabb->center.x + aabb->extents.x, aabb->center.y - aabb->extents.y, 0.0f};
     d_axis = p3 - p2;
     d_origin = p2 - ray_origin;
     det = (d_axis.x * ray_dir.y) - (d_axis.y * ray_dir.x);

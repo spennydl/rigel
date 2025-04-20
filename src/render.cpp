@@ -1,13 +1,10 @@
 #include "render.h"
 #include "world.h"
 #include "resource.h"
-#include <glm/glm.hpp>
-#include <glm/gtc/type_ptr.hpp>
+#include "rigelmath.h"
 #include <glad/glad.h>
 
 // TODO: remove
-#include <string>
-#include <sstream>
 #include <iostream>
 
 #define STB_IMAGE_IMPLEMENTATION
@@ -195,11 +192,10 @@ void BatchedTileRenderer::render(Viewport& viewport, Shader shader)
 {
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    auto screen_transform = viewport.get_screen_transform();
 
-    glm::mat4 world_transform(1.0);
-    world_transform = glm::scale(world_transform, glm::vec3(8.0, -8.0, 0));
-    world_transform = glm::translate(world_transform, glm::vec3(0.0, -WORLD_HEIGHT_TILES, 0.0));
+    m::Mat4 world_transform =
+        m::translation_by(m::Vec3 {0.0f, -WORLD_HEIGHT_TILES, 0.0f}) *
+        m::scale_by(m::Vec3 {8.0f, -8.0f, 0.0f});
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, tile_atlas.id);
@@ -208,8 +204,7 @@ void BatchedTileRenderer::render(Viewport& viewport, Shader shader)
     glBindTexture(GL_TEXTURE_2D_ARRAY, render_state.shadowmap_target.target_texture.id);
 
     glUseProgram(shader.id);
-    glUniformMatrix4fv(glGetUniformLocation(shader.id, "world"), 1, GL_FALSE, glm::value_ptr(world_transform));
-    //glUniformMatrix4fv(glGetUniformLocation(shader.id, "screen"), 1, GL_FALSE, glm::value_ptr(screen_transform));
+    glUniformMatrix4fv(glGetUniformLocation(shader.id, "world"), 1, GL_FALSE, reinterpret_cast<f32*>(&world_transform));
     glUniform1i(glGetUniformLocation(shader.id, "atlas"), 0);
     glUniform1i(glGetUniformLocation(shader.id, "shadow_map"), 1);
 
@@ -368,11 +363,11 @@ render_quad(Quad& quad, Viewport& vp, int r, int g, int b)
     glUniformMatrix4fv(glGetUniformLocation(quad.shader.id, "screen"),
                        1,
                        false,
-                       glm::value_ptr(screen_transform));
+                       reinterpret_cast<f32*>(&screen_transform));
     glUniformMatrix4fv(glGetUniformLocation(quad.shader.id, "world"),
                        1,
                        false,
-                       glm::value_ptr(quad_world));
+                       reinterpret_cast<f32*>(&quad_world));
     glUniform4f(glGetUniformLocation(quad.shader.id, "color"),
                 (float)r / 255.0,
                 (float)g / 255.0,
@@ -384,7 +379,7 @@ render_quad(Quad& quad, Viewport& vp, int r, int g, int b)
     glBindVertexArray(0);
 }
 
-Tri::Tri(glm::vec3 v1, glm::vec3 v2, glm::vec3 v3, Shader shader)
+Tri::Tri(m::Vec3 v1, m::Vec3 v2, m::Vec3 v3, Shader shader)
   : shader(shader)
 {
 
@@ -424,7 +419,7 @@ render_tri(Tri& tri, Viewport& vp, int r, int g, int b)
     glUniformMatrix4fv(glGetUniformLocation(tri.shader.id, "screen"),
                        1,
                        false,
-                       glm::value_ptr(screen_transform));
+                       reinterpret_cast<f32*>(&screen_transform));
     glUniform4f(glGetUniformLocation(tri.shader.id, "color"),
                 (float)r / 255.0,
                 (float)g / 255.0,
@@ -437,29 +432,24 @@ render_tri(Tri& tri, Viewport& vp, int r, int g, int b)
 }
 
 void
-Viewport::translate(glm::vec3 by)
+Viewport::translate(m::Vec3 by)
 {
-    this->position += by;
+    this->position = this->position + by;
 }
 
-glm::vec3
+m::Vec3
 Viewport::get_position() const noexcept
 {
     return this->position;
 }
 
-glm::mat4
+m::Mat4
 Viewport::get_screen_transform() const
 {
-    glm::mat4 screen_transform(1.0f);
-    screen_transform = glm::translate(screen_transform, glm::vec3(-1, -1, 0));
-    screen_transform = glm::scale(
-      screen_transform,
-      glm::vec3(this->scale * (2.0 / this->width),
-                this->scale * (2.0 / this->height), 0));
-    screen_transform = glm::translate(screen_transform, this->position * -1.0f);
-
-    return screen_transform;
+    return
+           m::scale_by({this->scale * (2.0f / this->width),
+                        this->scale * (2.0f / this->height), 0.0f}) *
+           m::translation_by({-1.0f, -1.0f, 0.0f});
 }
 
 void
@@ -685,11 +675,11 @@ void begin_render(Viewport& viewport, GameState* game_state, f32 fb_width, f32 f
     // TODO: obs should have lights be their own thing somewhere
     auto player = game_state->active_world_chunk->entities;
     auto player_collider = player->colliders->aabbs[0];
-    glm::vec3 player_center = player->position + player_collider.extents;
+    m::Vec3 player_center = player->position + player_collider.extents;
 
     render_state.global_uniforms.screen_transform = viewport.get_screen_transform();
-    render_state.global_uniforms.point_lights[0] = glm::vec4(player_center, 0.0);
-    render_state.global_uniforms.point_lights[1] = glm::vec4(210.0, 80.0, 0.0, 0.0);
+    render_state.global_uniforms.point_lights[0] = m::Vec4 {player_center.x, player_center.y, player_center.z, 0.0f};
+    render_state.global_uniforms.point_lights[1] = m::Vec4 {210.0f, 80.0f, 0.0f, 0.0f};
 
     glBindBuffer(GL_UNIFORM_BUFFER, render_state.global_ubo);
     glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(GlobalUniforms), &render_state.global_uniforms);
@@ -715,7 +705,8 @@ void lighting_pass(mem::Arena* scratch_arena, TileMap* tile_map)
          light_idx < n_lights;
          light_idx++)
     {
-        glm::vec3 point_light = render_state.global_uniforms.point_lights[light_idx];
+        m::Vec4 point_light4 = render_state.global_uniforms.point_lights[light_idx];
+        m::Vec3 point_light {point_light4.x, point_light4.y, point_light4.z};
         make_shadow_map_for_point_light(scratch_arena, tile_map, point_light, light_idx);
     }
     end_render_to_target();
@@ -746,7 +737,7 @@ void render_decoration_layer(Viewport& viewport)
     draw_data->deco_renderer.render(viewport, game_shaders[TILEMAP_DRAW_SHADER]);
 }
 
-void make_shadow_map_for_point_light(mem::Arena* scratch_arena, TileMap* tile_map, glm::vec3 light_pos, i32 light_index)
+void make_shadow_map_for_point_light(mem::Arena* scratch_arena, TileMap* tile_map, m::Vec3 light_pos, i32 light_index)
 {
     // we just need vec2 verts
     usize n_tiles = tile_map->n_nonempty_tiles;
@@ -757,13 +748,14 @@ void make_shadow_map_for_point_light(mem::Arena* scratch_arena, TileMap* tile_ma
 
     usize quad_idx = 0;
 
-    glm::vec2 light_tilespace = glm::vec2(light_pos.x, 180.0f - light_pos.y);
-    //glm::vec2 light_tilespace = world_to_tiles(light_pos) * glm::vec2(TILE_WIDTH_PIXELS, TILE_WIDTH_PIXELS);
+    m::Vec2 light_tilespace {light_pos.x, 180.0f - light_pos.y};
+
     for (usize y = 0; y < WORLD_HEIGHT_TILES; y++)
     {
         for (usize x = 0; x < WORLD_WIDTH_TILES; x++)
         {
-            glm::vec2 dir_to_light = glm::vec2(x * TILE_WIDTH_PIXELS, y * TILE_WIDTH_PIXELS) - light_tilespace;
+            m::Vec2 dir_to_light =
+                m::Vec2{(f32)(x * TILE_WIDTH_PIXELS), (f32)(y * TILE_WIDTH_PIXELS)} - light_tilespace;
             usize i = tile_to_index(x, y);
 
             if (tile_map->tiles[i] == TileType::EMPTY)
@@ -771,11 +763,11 @@ void make_shadow_map_for_point_light(mem::Arena* scratch_arena, TileMap* tile_ma
                 continue;
             }
 
-            glm::vec2 tile_verts[] = {
-                glm::vec2(x * TILE_WIDTH_PIXELS, y * TILE_WIDTH_PIXELS),
-                glm::vec2((x * TILE_WIDTH_PIXELS) + TILE_WIDTH_PIXELS, y * TILE_WIDTH_PIXELS),
-                glm::vec2((x * TILE_WIDTH_PIXELS) + TILE_WIDTH_PIXELS, (y * TILE_WIDTH_PIXELS) + TILE_WIDTH_PIXELS),
-                glm::vec2(x * TILE_WIDTH_PIXELS, (y * TILE_WIDTH_PIXELS) + TILE_WIDTH_PIXELS)
+            m::Vec2 tile_verts[] = {
+                {(f32)(x * TILE_WIDTH_PIXELS),                       (f32)(y * TILE_WIDTH_PIXELS)},
+                {(f32)((x * TILE_WIDTH_PIXELS) + TILE_WIDTH_PIXELS), (f32)(y * TILE_WIDTH_PIXELS)},
+                {(f32)((x * TILE_WIDTH_PIXELS) + TILE_WIDTH_PIXELS), (f32)((y * TILE_WIDTH_PIXELS) + TILE_WIDTH_PIXELS)},
+                {(f32)(x * TILE_WIDTH_PIXELS),                       (f32)((y * TILE_WIDTH_PIXELS) + TILE_WIDTH_PIXELS)}
             };
 
             for (usize edge_start = 0; edge_start < 4; edge_start++)
@@ -786,15 +778,15 @@ void make_shadow_map_for_point_light(mem::Arena* scratch_arena, TileMap* tile_ma
                     edge_end = 0;
                 }
 
-                glm::vec2 edge = tile_verts[edge_end] - tile_verts[edge_start];
-                glm::vec2 norm(-edge.y, edge.x);
-                if (glm::dot(norm, dir_to_light) <= 0)
+                m::Vec2 edge = tile_verts[edge_end] - tile_verts[edge_start];
+                m::Vec2 norm {-edge.y, edge.x};
+                if (m::dot(norm, dir_to_light) <= 0)
                 {
                     continue;
                 }
 
-                glm::vec2 end_from_light = tile_verts[edge_end] - light_tilespace;
-                glm::vec2 start_from_light = tile_verts[edge_start] - light_tilespace;
+                m::Vec2 end_from_light = tile_verts[edge_end] - light_tilespace;
+                m::Vec2 start_from_light = tile_verts[edge_start] - light_tilespace;
 
                 usize quad_start = quad_idx * elems_per_quad;
                 verts[quad_start] = tile_verts[edge_start].x;
@@ -846,10 +838,11 @@ void make_shadow_map_for_point_light(mem::Arena* scratch_arena, TileMap* tile_ma
     auto shader = game_shaders[TILE_OCCLUDER_SHADER];
     glUseProgram(shader.id);
 
-    glm::mat4 world_transform(1.0);
-    world_transform = glm::scale(world_transform, glm::vec3(1.0, -1.0, 0));
-    world_transform = glm::translate(world_transform, glm::vec3(0.0, -WORLD_HEIGHT_TILES * TILE_WIDTH_PIXELS, 0.0));
-    glUniformMatrix4fv(glGetUniformLocation(shader.id, "world"), 1, GL_FALSE, glm::value_ptr(world_transform));
+    m::Mat4 world_transform =
+        m::translation_by({0.0f, (f32)(-WORLD_HEIGHT_TILES * TILE_WIDTH_PIXELS), 0.0f}) *
+        m::scale_by({1.0f, -1.0f, 0.0f});
+
+    glUniformMatrix4fv(glGetUniformLocation(shader.id, "world"), 1, GL_FALSE, reinterpret_cast<f32*>(&world_transform));
 
     glUniform1i(glGetUniformLocation(shader.id, "light_idx"), light_index);
 
@@ -870,21 +863,21 @@ void render_all_entities(Viewport& viewport, WorldChunk* world_chunk, usize temp
         ImageResource img_resource = get_image_resource(e->sprite_id);
 
         f32 vertical_scale = img_resource.height / img_resource.n_frames;
-        glm::mat4 world(1.0f);
         // TODO: should have the concept of a sprite offset somewhere
-        world = glm::translate(world, glm::vec3(e->position.x - 6, e->position.y, 0));
-        world = glm::scale(world, glm::vec3(img_resource.width, vertical_scale, 0.0f));
+        m::Mat4 world =
+            m::scale_by({(f32)img_resource.width, vertical_scale, 0.0f}) *
+            m::translation_by({e->position.x - 6.0f, e->position.y, 0.0f});
 
         auto shader = game_shaders[ENTITY_DRAW_SHADER];
         glUseProgram(shader.id);
         glUniformMatrix4fv(glGetUniformLocation(shader.id, "screen"),
                         1,
                         false,
-                        glm::value_ptr(screen));
+                        reinterpret_cast<f32*>(&screen));
         glUniformMatrix4fv(glGetUniformLocation(shader.id, "world"),
                         1,
                         false,
-                        glm::value_ptr(world));
+                        reinterpret_cast<f32*>(&world));
         glUniform1i(glGetUniformLocation(shader.id, "anim_frame"), temp_anim_frame);
         glUniform1i(glGetUniformLocation(shader.id, "sprite"), 0);
         //usize facing_mult = e->velocity.x >= 0 ? 1 : -1;
@@ -946,16 +939,14 @@ void end_render()
     Shader screen_shader = game_shaders[SCREEN_SHADER];
     f32 scale_factor = render_state.screen_target.w / render_state.internal_target.w;
 
-    glm::mat4 world_transform(1.0f);
-    world_transform = glm::scale(world_transform, glm::vec3(fb_width, fb_height, 0.0f));
-    world_transform = glm::translate(world_transform, glm::vec3(-0.5, -0.5, 0));
+    m::Mat4 world_transform =
+        m::translation_by(m::Vec3 {-0.5, -0.5, 0.0}) *
+        m::scale_by(m::Vec3 {fb_width, fb_height, 0.0f });
 
-    glm::mat4 screen_transform(1.0f);
-    //screen_transform = glm::translate(screen_transform, glm::vec3(-0.5, -0.5, 0));
-    screen_transform = glm::scale(
-      screen_transform,
-      glm::vec3(scale_factor * (2.0 / render_state.screen_target.w),
-                -scale_factor * (2.0 / render_state.screen_target.h), 0));
+    m::Mat4 screen_transform =
+        m::scale_by(
+        m::Vec3 {scale_factor * (2.0f / render_state.screen_target.w),
+                -scale_factor * (2.0f / render_state.screen_target.h), 0});
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, render_state.internal_target.target_texture.id);
@@ -964,11 +955,11 @@ void end_render()
     glUniformMatrix4fv(glGetUniformLocation(screen_shader.id, "screen_transform"),
                        1,
                        false,
-                       glm::value_ptr(screen_transform));
+                       reinterpret_cast<f32*>(&screen_transform));
     glUniformMatrix4fv(glGetUniformLocation(screen_shader.id, "world_transform"),
                        1,
                        false,
-                       glm::value_ptr(world_transform));
+                       reinterpret_cast<f32*>(&world_transform));
     glUniform1i(glGetUniformLocation(screen_shader.id, "game"),
                        0);
 

@@ -9,7 +9,6 @@
 
 
 #include <SDL3/SDL.h>
-#include <glm/glm.hpp>
 #include <SDL3/SDL_time.h>
 #include <glad/glad.h>
 #include <iostream>
@@ -124,7 +123,6 @@ int main()
     }
 */
 
-
     SDL_Init(SDL_INIT_VIDEO);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 
@@ -160,7 +158,7 @@ int main()
 
     GameState* game_state = initialize_game_state(memory);
     game_state->active_world_chunk = load_world_chunk(memory);
-    game_state->active_world_chunk->add_player(memory, player_sprite.resource_id, glm::vec3(40, 64, 0), player_collider);
+    game_state->active_world_chunk->add_player(memory, player_sprite.resource_id, m::Vec3{40.0f, 64.0f, 0.0f}, player_collider);
 
     ImageResource tilesheet = load_image_resource("resource/image/tranquil_tunnels_transparent.png");
     render::make_world_chunk_renderable(&memory.scratch_arena, game_state->active_world_chunk, tilesheet);
@@ -257,7 +255,7 @@ int main()
 
                 Entity* player = game_state->active_world_chunk->entities;
 
-                glm::vec3 new_acc = glm::vec3(0.0f);
+                m::Vec3 new_acc = {0};
 
                 f32 gravity = -600; // TODO: grav
                 if (player->state_flags & STATE_ON_LAND) {
@@ -286,7 +284,7 @@ int main()
 
                 TileMap* active_map = game_state->active_world_chunk->active_map;
                 player->acceleration = new_acc;
-                // TODO: what happens if the map changes mid move?
+
                 move_entity(player, active_map, dt);
 
                 if (player->velocity.y <= 0)
@@ -303,36 +301,6 @@ int main()
                         state_transition_land_to_fall(player);
                     }
                 }
-
-                    //glm::vec3 player_bl = player->position - glm::vec3(0, 1, 0);
-                    //glm::vec3 player_br(player_bl.x + (2*player_aabb.extents.x), player_bl.y, 0);
-                    //player_aabb.center = player_bl + player_aabb.extents;
-//
-                    //auto tile_bl = world_to_tiles(player_bl);
-                    //auto tile_br = world_to_tiles(player_br);
-                    //auto tile_bl_idx = tile_to_index(tile_bl);
-                    //auto tile_br_idx = tile_to_index(tile_br);
-//
-                    //for (usize tile = tile_bl_idx; tile <= tile_br_idx; tile++) {
-                        //if (active_map->tiles[tile] != TileType::EMPTY) {
-                            //auto tile_world = tile_index_to_world(tile);
-                            //AABB tile_aabb;
-                            //tile_aabb.extents = glm::vec3(TILE_WIDTH_PIXELS / 2, TILE_WIDTH_PIXELS / 2, 0);
-                            //tile_aabb.center = tile_world + tile_aabb.extents;
-//
-                            //glm::vec3 overlap = simple_AABB_overlap(player_aabb, tile_aabb);
-//
-                            //if (overlap.y > 0 && overlap.x == 0) {
-                                //player_is_on_ground = true;
-                                //break;
-                            //}
-                        //}
-                    //}
-                    //if (!player_is_on_ground && player->state_flags & STATE_ON_LAND) {
-                        //state_transition_land_to_fall(player);
-                    //}
-                //}
-
 
                 // TODO: This has gotta go somewhere better
                 if ((player->state_flags & STATE_ON_LAND) == 0) {

@@ -4,51 +4,49 @@
 #include "mem.h"
 #include "rigel.h"
 #include "tilemap.h"
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
+#include "rigelmath.h"
 
 namespace rigel {
 
 struct Rectangle
 {
-    i32 x;
-    i32 y;
-    i32 w;
-    i32 h;
+    f32 x;
+    f32 y;
+    f32 w;
+    f32 h;
 
-    glm::mat4 get_world_transform()
+    m::Mat4 get_world_transform()
     {
-        glm::mat4 transform(1.0);
-        transform = glm::translate(transform, glm::vec3(x, y, 0));
-        transform = glm::scale(transform, glm::vec3(w, h, 0));
-        return transform;
+        return m::translation_by(m::Vec3 { x, y, 0 }) *
+               m::scale_by(m::Vec3 { w, h, 0.0f });
     }
 };
 
 struct AABB
 {
-    glm::vec3 center;
-    glm::vec3 extents;
+    m::Vec3 center;
+    m::Vec3 extents;
     bool is_colliding;
 };
 
 inline AABB
 aabb_from_rect(Rectangle rect)
 {
-    return AABB{ .center = glm::vec3(rect.x, rect.y, 0),
-                 .extents = glm::vec3(rect.w / 2, rect.h / 2, 0) };
+    return AABB{ .center  = m::Vec3 {rect.x, rect.y, 0.0f},
+                 .extents = m::Vec3 {rect.w / 2, rect.h / 2, 0} };
 }
 
 inline Rectangle
 rect_from_aabb(AABB aabb)
 {
     auto min = aabb.center - aabb.extents;
-    return Rectangle{ .x = (int)min.x,
-                      .y = (int)min.y,
-                      .w = (int)(aabb.extents.x * 2.0f),
-                      .h = (int)(aabb.extents.y * 2.0f) };
+    return Rectangle{ .x = min.x,
+                      .y = min.y,
+                      .w = (aabb.extents.x * 2.0f),
+                      .h = (aabb.extents.y * 2.0f) };
 }
 
+// TODO: Do we need or want multiple colliders anymore?
 struct ColliderSet
 {
     usize n_aabbs;
@@ -63,16 +61,16 @@ struct CollisionResult
     // how much to move along y to get out
     f32 vdist_to_out;
     // gives the direction of the collision
-    glm::vec3 penetration_axis;
+    m::Vec3 penetration_axis;
     // the edge on which we have collided
-    glm::vec3 edge[2];
+    m::Vec3 edge[2];
 
     CollisionResult()
       : t_to_collide(-1.0)
       , depth(-1.0)
       , vdist_to_out(0.0)
-      , penetration_axis(0, 0, 0)
-      , edge{glm::vec3(0), glm::vec3(0)}
+      , penetration_axis{0, 0, 0}
+      , edge{m::Vec3{0, 0, 0}, m::Vec3{0, 0, 0}}
     {
     }
 };
@@ -81,12 +79,7 @@ struct ColliderRaycastResult {
     // t value on ray where collision happens
     f32 t;
     // edge we hit
-    glm::vec3 edge[2];
-
-    ColliderRaycastResult()
-    : t(0)
-    , edge{glm::vec3(0), glm::vec3(0)}
-    {}
+    m::Vec3 edge[2];
 };
 
 inline f32
@@ -102,7 +95,7 @@ do_ranges_overlap(f32 start1, f32 end1, f32 start2, f32 end2)
     return end2 - start1;
 }
 
-inline glm::vec3
+inline m::Vec3
 simple_AABB_overlap(AABB left, AABB right)
 {
     f32 depth_x = do_ranges_overlap(left.center.x - left.extents.x,
@@ -116,18 +109,18 @@ simple_AABB_overlap(AABB left, AABB right)
                                     right.center.y + right.extents.y);
 
     if (depth_x >= 0 && depth_y >= 0) {
-        return (depth_x <= depth_y) ? glm::vec3(depth_x, 0, 0) : glm::vec3(0, depth_y, 0);
+        return (depth_x <= depth_y) ? m::Vec3{depth_x, 0.0f, 0.0f} : m::Vec3{0.0f, depth_y, 0.0f};
     }
 
-    return glm::vec3(-1, -1, 0);
+    return m::Vec3{-1.0f, -1.0f, 0.0f};
 }
 
 CollisionResult
-collide_AABB_with_static_AABB(AABB* aabb, AABB* aabb_static, glm::vec3 displacement);
-glm::vec3
-AABB_closest_to(AABB* aabb, glm::vec3 test);
+collide_AABB_with_static_AABB(AABB* aabb, AABB* aabb_static, m::Vec3 displacement);
+m::Vec3
+AABB_closest_to(AABB* aabb, m::Vec3 test);
 ColliderRaycastResult
-ray_intersect_AABB(AABB* aabb, glm::vec3 ray_origin, glm::vec3 ray_dir);
+ray_intersect_AABB(AABB* aabb, m::Vec3 ray_origin, m::Vec3 ray_dir);
 
 
 }

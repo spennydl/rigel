@@ -1,10 +1,10 @@
 #ifndef ENTITY_H_
 #define ENTITY_H_
 
-#include <glm/glm.hpp>
 #include <iostream>
 
 #include "rigel.h"
+#include "rigelmath.h"
 #include "collider.h"
 #include "resource.h"
 #include "tilemap.h"
@@ -42,9 +42,9 @@ struct Entity
 
     u32 state_flags;
 
-    glm::vec3 position;
-    glm::vec3 velocity;
-    glm::vec3 acceleration;
+    m::Vec3 position;
+    m::Vec3 velocity;
+    m::Vec3 acceleration;
 
     ZeroCrossTrigger facing_dir;
 

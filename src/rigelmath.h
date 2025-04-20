@@ -3,6 +3,8 @@
 
 #include <iostream>
 #include <cassert>
+// TODO: find an intrinsic for sqrt?
+#include <cmath>
 
 #include "rigel.h"
 
@@ -135,20 +137,20 @@ operator<<(std::ostream& os, Vec4& v)
 
 struct Mat4
 {
-    Vec4 rows[4];
+    Vec4 cols[4];
 
     inline Vec4&
     operator[](usize i)
     {
         assert(i < 4 && "oob");
-        return rows[i];
+        return cols[i];
     }
 
     inline const Vec4&
     operator[](usize i) const
     {
         assert(i < 4 && "oob");
-        return rows[i];
+        return cols[i];
     }
 };
 
@@ -176,12 +178,25 @@ diag(f32 s)
     }};
 }
 
+inline Mat4
+transpose(const Mat4& m)
+{
+    return Mat4
+    {{
+        {m[0].x, m[0].y, m[0].z, m[0].w},
+        {m[1].x, m[1].y, m[1].z, m[1].w},
+        {m[2].x, m[2].y, m[2].z, m[2].w},
+        {m[3].x, m[3].y, m[3].z, m[3].w},
+    }};
+}
+
 inline std::ostream&
 operator<<(std::ostream& os, Mat4& mat)
 {
+    Mat4 row_wise = transpose(mat);
     for (int i = 0; i < 4; i++)
     {
-        os << mat.rows[i] << std::endl;
+        os << row_wise.cols[i] << std::endl;
     }
     return os;
 }
@@ -189,13 +204,12 @@ operator<<(std::ostream& os, Mat4& mat)
 inline Vec4
 operator*(const Mat4& left, const Vec4& right)
 {
-    Vec4 result;
+    Vec4 result {0, 0, 0, 0};
     for (int n = 0; n < 4; n++)
     {
-        result.xyzw[n] = 0;
         for (int k = 0; k < 4; k++)
         {
-            result.xyzw[n] = left.rows[n][k] * right[n];
+            result.xyzw[n] += left.cols[n][k] * right[n];
         }
     }
     return result;
@@ -205,9 +219,9 @@ inline Mat4
 operator*(const Mat4& left, const Mat4& right)
 {
     Mat4 result = {0};
-    for (int m = 0; m < 4; m++)
+    for (int n = 0; n < 4; n++)
     {
-        for (int n = 0; n < 4; n++)
+        for (int m = 0; m < 4; m++)
         {
             for (int k = 0; k < 4; k++)
             {
@@ -222,9 +236,9 @@ inline Mat4
 operator*(const Mat4& left, const f32& right)
 {
     Mat4 result = left;
-    for (i32 m = 0; m < 4; m++)
+    for (i32 n = 0; n < 4; n++)
     {
-        for (i32 n = 0; n < 4; n++)
+        for (i32 m = 0; m < 4; m++)
         {
             result[m][n] = left[m][n] * right;
         }
@@ -237,9 +251,7 @@ translation_by(Vec3 by)
 {
     Mat4 result = mat4_I();
 
-    result.rows[0].w = by.x;
-    result.rows[1].w = by.y;
-    result.rows[2].w = by.z;
+    result.cols[3] = Vec4 { by.x, by.y, by.x, 1.0 };
 
     return result;
 }
@@ -248,7 +260,21 @@ inline Mat4
 scale_by(f32 by)
 {
     Mat4 result = diag(by);
+
     result[3][3] = 1;
+
+    return result;
+}
+
+inline Mat4
+scale_by(Vec3 by)
+{
+    Mat4 result = mat4_I();
+
+    result[0][0] = by.x;
+    result[1][1] = by.y;
+    result[2][2] = by.z;
+
     return result;
 }
 
@@ -481,6 +507,25 @@ hadamard(const Vec4& lhs, const Vec4& rhs)
 }
 
 inline f32
+length(Vec2 v)
+{
+    return sqrt(dot(v, v));
+}
+
+inline f32
+length(Vec3 v)
+{
+    return sqrt(dot(v, v));
+}
+
+inline f32
+length(Vec4 v)
+{
+    return sqrt(dot(v, v));
+}
+
+
+inline f32
 signof_zero(f32 val)
 {
     return (val < 0) ? -1.0 : (val == 0) ? 0 : 1;
@@ -504,10 +549,44 @@ floor(f32 val)
     return (f32)((u32)val);
 }
 
+inline Vec2
+floor(Vec2 val)
+{
+    return {floor(val.x), floor(val.y)};
+}
+
+inline Vec3
+floor(Vec3 val)
+{
+    return {floor(val.x), floor(val.y), floor(val.z)};
+}
+inline Vec4
+floor(Vec4 val)
+{
+    return {floor(val.x), floor(val.y), floor(val.z), floor(val.w)};
+}
+
 inline f32
 fract(f32 val)
 {
     return val - floor(val);
+}
+
+inline Vec2
+fract(Vec2 val)
+{
+    return {fract(val.x), fract(val.y)};
+}
+
+inline Vec3
+fract(Vec3 val)
+{
+    return {fract(val.x), fract(val.y), fract(val.z)};
+}
+inline Vec4
+fract(Vec4 val)
+{
+    return {fract(val.x), fract(val.y), fract(val.z), fract(val.w)};
 }
 
 inline f32

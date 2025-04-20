@@ -5,9 +5,6 @@ project(
   DESCRIPTION "Project Rigel"
   LANGUAGES CXX C)
 
-# TODO: vendor this too
-find_package(glm CONFIG REQUIRED)
-
 #find_package( OpenGL REQUIRED )
 #include_directories( ${OPENGL_INCLUDE_DIRS} )
 

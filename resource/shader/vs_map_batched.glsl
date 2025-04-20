@@ -14,9 +14,6 @@ out vec3 frag_world_pos;
 
 void main()
 {
-    //vec4 world_pos = world * vec4(pos, 1.0);
-    //gl_Position = vec4((world_pos.x / 320.0) - 1.0, (world_pos.y / 180.0) - 1, 0.0, 1.0);
-    //gl_Position = screen * world * vec4(pos, 1.0);
     gl_Position = screen * world * vec4(pos, 1.0);
     frag_world_pos = (world * vec4(pos, 1.0)).xyz;
     tex_coord = uv;

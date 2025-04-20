@@ -1,9 +1,9 @@
 #include "world.h"
 #include "tilemap.h"
+#include "rigelmath.h"
 #include <tinyxml2.h>
 
 #include <iostream>
-#include <sstream>
 
 
 namespace rigel {
@@ -31,7 +31,7 @@ EntityId
 WorldChunk::add_entity(mem::GameMem& mem,
                        EntityType type,
                        SpriteResourceId sprite_id,
-                       glm::vec3 initial_position,
+                       m::Vec3 initial_position,
                        Rectangle collider)
 {
     // TODO: allocating these is likely more tricky
@@ -60,7 +60,7 @@ WorldChunk::add_entity(mem::GameMem& mem,
 Entity*
 WorldChunk::add_player(mem::GameMem& mem,
                        SpriteResourceId sprite_id,
-                       glm::vec3 initial_position,
+                       m::Vec3 initial_position,
                        Rectangle collider)
 {
     entity_hash[0].id = PLAYER_ENTITY_ID;

@@ -6,6 +6,7 @@
 #include "entity.h"
 #include "tilemap.h"
 #include "resource.h"
+#include "rigelmath.h"
 
 #include <iostream>
 
@@ -39,12 +40,12 @@ struct WorldChunk
     EntityId add_entity(mem::GameMem& mem,
                         EntityType type,
                         SpriteResourceId sprite_id,
-                        glm::vec3 initial_position,
+                        m::Vec3 initial_position,
                         Rectangle collider);
     // REVIEW
     Entity* add_player(mem::GameMem& mem,
                                SpriteResourceId sprite_id,
-                               glm::vec3 initial_position,
+                               m::Vec3 initial_position,
                                Rectangle collider);
 };
 
