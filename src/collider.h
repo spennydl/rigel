@@ -3,6 +3,7 @@
 
 #include "mem.h"
 #include "rigel.h"
+#include "tilemap.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -88,14 +89,6 @@ struct ColliderRaycastResult {
     {}
 };
 
-
-CollisionResult
-collide_AABB_with_static_AABB(AABB* aabb, AABB* aabb_static, glm::vec3 displacement);
-glm::vec3
-AABB_closest_to(AABB* aabb, glm::vec3 test);
-ColliderRaycastResult
-ray_intersect_AABB(AABB* aabb, glm::vec3 ray_origin, glm::vec3 ray_dir);
-
 inline f32
 do_ranges_overlap(f32 start1, f32 end1, f32 start2, f32 end2)
 {
@@ -108,6 +101,34 @@ do_ranges_overlap(f32 start1, f32 end1, f32 start2, f32 end2)
     }
     return end2 - start1;
 }
+
+inline glm::vec3
+simple_AABB_overlap(AABB left, AABB right)
+{
+    f32 depth_x = do_ranges_overlap(left.center.x - left.extents.x,
+                                    left.center.x + left.extents.x,
+                                    right.center.x - right.extents.x,
+                                    right.center.x + right.extents.x);
+
+    f32 depth_y = do_ranges_overlap(left.center.y - left.extents.y,
+                                    left.center.y + left.extents.y,
+                                    right.center.y - right.extents.y,
+                                    right.center.y + right.extents.y);
+
+    if (depth_x >= 0 && depth_y >= 0) {
+        return (depth_x <= depth_y) ? glm::vec3(depth_x, 0, 0) : glm::vec3(0, depth_y, 0);
+    }
+
+    return glm::vec3(-1, -1, 0);
+}
+
+CollisionResult
+collide_AABB_with_static_AABB(AABB* aabb, AABB* aabb_static, glm::vec3 displacement);
+glm::vec3
+AABB_closest_to(AABB* aabb, glm::vec3 test);
+ColliderRaycastResult
+ray_intersect_AABB(AABB* aabb, glm::vec3 ray_origin, glm::vec3 ray_dir);
+
 
 }
 

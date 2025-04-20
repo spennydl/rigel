@@ -27,7 +27,7 @@ resource_initialize(mem::Arena& resource_arena)
     resource_lookup = resource_arena.alloc_simple<ResourceLookup>();
 
     resource_lookup->text_storage = resource_arena.alloc_sub_arena(32 * ONE_KB);
-    resource_lookup->image_storage = resource_arena.alloc_sub_arena(1 * ONE_MB);
+    resource_lookup->image_storage = resource_arena.alloc_sub_arena(7 * ONE_MB);
 }
 
 TextResource

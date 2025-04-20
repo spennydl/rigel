@@ -18,6 +18,8 @@ namespace render {
 
 const f32 RENDER_INTERNAL_WIDTH = 320.0;
 const f32 RENDER_INTERNAL_HEIGHT = 180.0;
+const f32 RENDER_SCREEN_WIDTH = 1280.0;
+const f32 RENDER_SCREEN_HEIGHT = 720.0;
 
 const f32 QUAD_VERTS[] = { 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0,
                        1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 0.0 };
@@ -29,7 +31,7 @@ class Viewport
 {
   public:
     explicit Viewport()
-      : position(0, 0, 0)
+      : position(0, 4, 0)
       , scale(1.0)
       , width(RENDER_INTERNAL_WIDTH)
       , height(RENDER_INTERNAL_HEIGHT)
@@ -182,6 +184,13 @@ struct RenderTarget
 };
 
 RenderTarget create_new_render_target();
+
+struct UniformLight
+{
+    glm::vec4 position;
+    glm::vec4 color;
+    glm::vec4 data;
+};
 
 struct GlobalUniforms
 {

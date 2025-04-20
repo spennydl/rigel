@@ -7,6 +7,7 @@
 #include <tinyxml2.h>
 #include <iostream>
 #include <glm/glm.hpp>
+#include <iostream>
 
 namespace rigel {
 
@@ -39,13 +40,26 @@ tile_to_index(usize tile_x, usize tile_y)
     return (tile_y * WORLD_WIDTH_TILES) + tile_x;
 }
 
+inline usize
+tile_to_index(glm::vec2 tile_coord)
+{
+    return tile_to_index(tile_coord.x, tile_coord.y);
+}
+
 inline glm::vec2
 world_to_tiles(glm::vec3 world_coord)
 {
-    isize x = (isize)world_coord.x / TILE_WIDTH_PIXELS;
+    isize x = world_coord.x / TILE_WIDTH_PIXELS;
     isize y = WORLD_HEIGHT_TILES - ((isize)world_coord.y / TILE_WIDTH_PIXELS) - 1;
-    assert(y >= 0 && "huh it happened");
     return glm::vec2(x, y);
+}
+
+inline glm::vec3
+tile_index_to_world(usize idx)
+{
+    usize x = idx % WORLD_WIDTH_TILES;
+    usize y = WORLD_HEIGHT_TILES - (idx / WORLD_WIDTH_TILES) - 1;
+    return glm::vec3(x * TILE_WIDTH_PIXELS, y * TILE_WIDTH_PIXELS, 0);
 }
 
 inline glm::vec3
@@ -56,6 +70,12 @@ tiles_to_world(usize tile_x, usize tile_y)
     return glm::vec3(x, y, 0);
 }
 
+inline glm::vec3
+tiles_to_world(glm::vec2 tile_coord)
+{
+    return tiles_to_world(tile_coord.x, tile_coord.y);
+
+}
 TileMap*
 load_tile_map_from_xml(mem::Arena& arena, TextResource xml_data);
 }

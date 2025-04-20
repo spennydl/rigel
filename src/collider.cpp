@@ -62,36 +62,12 @@ collide_AABB_with_static_AABB(AABB* aabb, AABB* aabb_static, glm::vec3 displacem
         if (t > t_to_collide) {
             t_to_collide = t;
         }
-        if (component > 0) {
-            // right edge
-            result.edge[0].x = aabb_static_max.x;
-            result.edge[0].y = aabb_static_max.y;
-            result.edge[1].x = aabb_static_max.x;
-            result.edge[1].y = aabb_static_min.y;
-        } else {
-            result.edge[0].x = aabb_static_min.x;
-            result.edge[0].y = aabb_static_max.y;
-            result.edge[1].x = aabb_static_min.x;
-            result.edge[1].y = aabb_static_min.y;
-        }
     } else {
         // collision is now
         min_depth = depth;
         f32 component = (aabb->center.x > aabb_static->center.x) ? 1 : -1;
         result.penetration_axis = glm::vec3(component, 0, 0);
         result.vdist_to_out = 0;
-        if (component > 0) {
-            // right edge
-            result.edge[0].x = aabb_static_max.x;
-            result.edge[0].y = aabb_static_max.y;
-            result.edge[1].x = aabb_static_max.x;
-            result.edge[1].y = aabb_static_min.y;
-        } else {
-            result.edge[0].x = aabb_static_min.x;
-            result.edge[0].y = aabb_static_max.y;
-            result.edge[1].x = aabb_static_min.x;
-            result.edge[1].y = aabb_static_min.y;
-        }
     }
 
     depth = do_ranges_overlap(aabb_min.y, aabb_max.y, aabb_static_min.y, aabb_static_max.y);
@@ -119,18 +95,6 @@ collide_AABB_with_static_AABB(AABB* aabb, AABB* aabb_static, glm::vec3 displacem
                 t_to_collide = t;
             }
             result.vdist_to_out = future_depth;
-            if (component > 0) {
-                //top
-                result.edge[0].x = aabb_static_min.x;
-                result.edge[0].y = aabb_static_max.y;
-                result.edge[1].x = aabb_static_max.x;
-                result.edge[1].y = aabb_static_max.y;
-            } else {
-                result.edge[0].x = aabb_static_min.x;
-                result.edge[0].y = aabb_static_min.y;
-                result.edge[1].x = aabb_static_max.x;
-                result.edge[1].y = aabb_static_min.y;
-            }
         }
     }
 
@@ -140,18 +104,6 @@ collide_AABB_with_static_AABB(AABB* aabb, AABB* aabb_static, glm::vec3 displacem
         result.penetration_axis = glm::vec3(0, component, 0);
         result.vdist_to_out = min_depth;
         t_to_collide = 0;
-        if (component > 0) {
-            //top
-            result.edge[0].x = aabb_static_min.x;
-            result.edge[0].y = aabb_static_max.y;
-            result.edge[1].x = aabb_static_max.x;
-            result.edge[1].y = aabb_static_max.y;
-        } else {
-            result.edge[0].x = aabb_static_min.x;
-            result.edge[0].y = aabb_static_min.y;
-            result.edge[1].x = aabb_static_max.x;
-            result.edge[1].y = aabb_static_min.y;
-        }
     }
 
     result.t_to_collide = t_to_collide;

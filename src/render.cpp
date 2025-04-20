@@ -689,7 +689,7 @@ void begin_render(Viewport& viewport, GameState* game_state, f32 fb_width, f32 f
 
     render_state.global_uniforms.screen_transform = viewport.get_screen_transform();
     render_state.global_uniforms.point_lights[0] = glm::vec4(player_center, 0.0);
-    render_state.global_uniforms.point_lights[1] = glm::vec4(160.0, 100.0, 0.0, 0.0);
+    render_state.global_uniforms.point_lights[1] = glm::vec4(210.0, 80.0, 0.0, 0.0);
 
     glBindBuffer(GL_UNIFORM_BUFFER, render_state.global_ubo);
     glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(GlobalUniforms), &render_state.global_uniforms);
@@ -699,6 +699,11 @@ void begin_render(Viewport& viewport, GameState* game_state, f32 fb_width, f32 f
 void lighting_pass(mem::Arena* scratch_arena, TileMap* tile_map)
 {
     // TODO
+    //
+    // I believe what I want is actually two different types of lights:
+    // - classic point lights
+    // - limited area lights that cast a relatively uniform value over a discrete
+    //   circle
     usize n_lights = 2;
 
     Shader shadow_shader = game_shaders[TILE_OCCLUDER_SHADER];
@@ -906,7 +911,7 @@ void begin_render_to_target(RenderTarget target)
     render_state.current_viewport.h = target.h;
 
     glViewport(0, 0, target.w, target.h);
-    glClearColor(0.0941, 0.0784, 0.10196, 1);
+    glClearColor(0.0941 * 0.5, 0.0784 * 0.5, 0.10196 * 0.5, 1);
     //glClearColor(0, 0, 0, 1);
     glClear(GL_COLOR_BUFFER_BIT);
 }
@@ -939,7 +944,7 @@ void end_render()
     f32 fb_height = render_state.internal_target.h;
     GpuQuad screen = render_state.screen;
     Shader screen_shader = game_shaders[SCREEN_SHADER];
-    f32 scale_factor = 4.0;
+    f32 scale_factor = render_state.screen_target.w / render_state.internal_target.w;
 
     glm::mat4 world_transform(1.0f);
     world_transform = glm::scale(world_transform, glm::vec3(fb_width, fb_height, 0.0f));

@@ -2,6 +2,7 @@
 #define ENTITY_H_
 
 #include <glm/glm.hpp>
+#include <iostream>
 
 #include "rigel.h"
 #include "collider.h"
@@ -39,15 +40,11 @@ struct Entity
     EntityType type;
     SpriteResourceId sprite_id;
 
-    // TODO: we are not using all of this
-    f32 jump_time;
     u32 state_flags;
-    glm::vec3 position;
 
-    glm::vec3 position_err;
+    glm::vec3 position;
     glm::vec3 velocity;
     glm::vec3 acceleration;
-    glm::vec3 forces;
 
     ZeroCrossTrigger facing_dir;
 
@@ -55,7 +52,10 @@ struct Entity
     ColliderSet* colliders;
 };
 
-void move_entity(Entity* entity, TileMap* tile_map, f32 dt);
+void
+move_entity(Entity* entity, TileMap* tile_map, f32 dt);
+bool
+collides_with_level(AABB aabb, TileMap* tile_map);
 
 inline void state_transition_air_to_land(Entity* e)
 {
@@ -88,6 +88,7 @@ inline void state_transition_fall_exclusive(Entity* e)
     flags |= STATE_FALLING;
     e->state_flags = flags;
 }
+
 
 } // namespace rigel
 

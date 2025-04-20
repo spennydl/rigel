@@ -15,7 +15,7 @@ load_world_chunk(mem::GameMem& mem)
     // TODO: this should be something that can hold lots of them I think
     mem::Arena tilemap_arena = mem.stage_arena.alloc_sub_arena(18*ONE_KB);
 
-    TextResource tilemap_data = load_text_resource("resource/map/layeredlevel.tmx");
+    TextResource tilemap_data = load_text_resource("resource/map/layered2.tmx");
 
     result->active_map = load_tile_map_from_xml(tilemap_arena, tilemap_data);
 

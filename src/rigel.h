@@ -23,6 +23,9 @@ typedef uint64_t big_usize;
 typedef int64_t big_isize;
 
 typedef float f32;
+// is this a hack?
+#define F32_INF (1.0f / 0.0)
+#define F32_NEG_INF (-1.0f / 0.0)
 typedef double f64;
 
 #define ONE_PAGE 4096
@@ -39,11 +42,8 @@ constexpr static EntityId ENTITY_ID_NONE = -1;
 // TODO: is this a good idea?
 constexpr static EntityId PLAYER_ENTITY_ID = 0;
 
-// 1/120th of a second for absolutely no raisin
-constexpr static i64 UPDATE_TIME_NS = 8333333;
-// 1/60th target for rendering
+constexpr static i64 UPDATE_TIME_NS = 16666667;//8333333;
 constexpr static i64 RENDER_TIME_NS = 16666667;
-
 
 // Globals
 struct InputState {

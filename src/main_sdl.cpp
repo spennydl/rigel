@@ -5,6 +5,7 @@
 #include "collider.h"
 #include "json.h"
 #include "game.h"
+#include "rigelmath.h"
 
 
 #include <SDL3/SDL.h>
@@ -25,7 +26,7 @@
    be a good task for a slow day.
  - pull player behavior out into a more final place. Was thinking a brain sorta abstraction,
    but I dunno.
- - start laying in lighting.
+ - DONE start laying in lighting.
  - there is work to do on collision, but collision is a bloody pit.
  - level loading needs work. i think it's time to rip out tinyxml and say thanks for your service.
  - gotta figure out switching between screens/rooms. i have a feeling that this will be the next
@@ -40,16 +41,6 @@ InputState g_input_state;
 }
 
 using namespace rigel;
-
-f32 signof(f32 val)
-{
-    return (val < 0) ? -1.0 : (val == 0) ? 0 : 1;
-}
-
-f32 abs(f32 val)
-{
-    return val * signof(val);
-}
 
 mem::GameMem
 initialize_game_memory()
@@ -86,7 +77,7 @@ initialize_game_memory()
     memory.stage_arena = memory.ephemeral_arena.alloc_sub_arena(ONE_MB);
     memory.colliders_arena = memory.ephemeral_arena.alloc_sub_arena(1024);
     memory.scratch_arena = memory.ephemeral_arena.alloc_sub_arena(2 * ONE_MB);
-    memory.resource_arena = memory.ephemeral_arena.alloc_sub_arena(2 * ONE_MB);
+    memory.resource_arena = memory.ephemeral_arena.alloc_sub_arena(8 * ONE_MB);
     memory.gfx_arena = memory.ephemeral_arena.alloc_sub_arena(2 * ONE_KB);
 
     std::cout << "memory map:" << std::endl;
@@ -133,6 +124,7 @@ int main()
     }
 */
 
+
     SDL_Init(SDL_INIT_VIDEO);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 
@@ -140,7 +132,7 @@ int main()
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
 
-    SDL_Window* window = SDL_CreateWindow("rigel", 1280, 720, SDL_WINDOW_OPENGL);
+    SDL_Window* window = SDL_CreateWindow("rigel", 1920, 1080, SDL_WINDOW_OPENGL);
     SDL_Renderer* sdl_renderer = SDL_CreateRenderer(window, nullptr);
 
     SDL_GLContext context = SDL_GL_CreateContext(window);
@@ -157,6 +149,7 @@ int main()
 
     i32 w, h;
     SDL_GetRenderOutputSize(sdl_renderer, &w, &h);
+    std::cout << "the screen is " << w << "x" << h << std::endl;
 
     resource_initialize(memory.resource_arena);
 
@@ -169,7 +162,7 @@ int main()
     game_state->active_world_chunk = load_world_chunk(memory);
     game_state->active_world_chunk->add_player(memory, player_sprite.resource_id, glm::vec3(40, 64, 0), player_collider);
 
-    ImageResource tilesheet = load_image_resource("resource/image/tranquil_tunnels_green_packed.png");
+    ImageResource tilesheet = load_image_resource("resource/image/tranquil_tunnels_transparent.png");
     render::make_world_chunk_renderable(&memory.scratch_arena, game_state->active_world_chunk, tilesheet);
 
     render::Viewport viewport;
@@ -256,7 +249,6 @@ int main()
             std::cerr << "warn: couln't get current time? " << SDL_GetError() << std::endl;
         }
 
-        AABB broad_player_aabb;
         i64 delta_update_time = iter_time - last_update_time;
         if (delta_update_time >= UPDATE_TIME_NS) {
             while (delta_update_time > 0) {
@@ -268,24 +260,23 @@ int main()
                 glm::vec3 new_acc = glm::vec3(0.0f);
 
                 f32 gravity = -600; // TODO: grav
-                if ((player->state_flags & STATE_ON_LAND) > 0) {
+                if (player->state_flags & STATE_ON_LAND) {
                     gravity = 0;
                 }
                 new_acc.y += gravity;
 
                 if (g_input_state.move_left_requested) {
-                    new_acc.x -= 650;
+                    new_acc.x -= 450;
                 }
 
                 if (g_input_state.move_right_requested) {
-                    new_acc.x += 650;
+                    new_acc.x += 450;
                 }
 
                 bool is_requesting_move = g_input_state.move_left_requested || g_input_state.move_right_requested;
-                if (abs(player->velocity.x) > 0 && !is_requesting_move) {
-                    new_acc.x -= 40 * player->velocity.x;
+                if (m::abs(player->velocity.x) > 0 && !is_requesting_move) {
+                    new_acc.x -= m::signof(player->velocity.x) * 600;// * player->velocity.x;
                 }
-
 
                 if (g_input_state.jump_requested) {
                     state_transition_land_to_jump(player);
@@ -293,13 +284,60 @@ int main()
                     player->velocity.y = 180;
                 }
 
+                TileMap* active_map = game_state->active_world_chunk->active_map;
                 player->acceleration = new_acc;
-                move_entity(player, game_state->active_world_chunk->active_map, dt);
+                // TODO: what happens if the map changes mid move?
+                move_entity(player, active_map, dt);
+
+                if (player->velocity.y <= 0)
+                {
+                    AABB player_aabb = player->colliders->aabbs[0];
+                    player_aabb.center = player->position + player_aabb.extents;
+                    player_aabb.center.y = player_aabb.center.y - 1;
+                    if (collides_with_level(player_aabb, active_map))
+                    {
+                        state_transition_air_to_land(player);
+                    }
+                    else
+                    {
+                        state_transition_land_to_fall(player);
+                    }
+                }
+
+                    //glm::vec3 player_bl = player->position - glm::vec3(0, 1, 0);
+                    //glm::vec3 player_br(player_bl.x + (2*player_aabb.extents.x), player_bl.y, 0);
+                    //player_aabb.center = player_bl + player_aabb.extents;
+//
+                    //auto tile_bl = world_to_tiles(player_bl);
+                    //auto tile_br = world_to_tiles(player_br);
+                    //auto tile_bl_idx = tile_to_index(tile_bl);
+                    //auto tile_br_idx = tile_to_index(tile_br);
+//
+                    //for (usize tile = tile_bl_idx; tile <= tile_br_idx; tile++) {
+                        //if (active_map->tiles[tile] != TileType::EMPTY) {
+                            //auto tile_world = tile_index_to_world(tile);
+                            //AABB tile_aabb;
+                            //tile_aabb.extents = glm::vec3(TILE_WIDTH_PIXELS / 2, TILE_WIDTH_PIXELS / 2, 0);
+                            //tile_aabb.center = tile_world + tile_aabb.extents;
+//
+                            //glm::vec3 overlap = simple_AABB_overlap(player_aabb, tile_aabb);
+//
+                            //if (overlap.y > 0 && overlap.x == 0) {
+                                //player_is_on_ground = true;
+                                //break;
+                            //}
+                        //}
+                    //}
+                    //if (!player_is_on_ground && player->state_flags & STATE_ON_LAND) {
+                        //state_transition_land_to_fall(player);
+                    //}
+                //}
+
 
                 // TODO: This has gotta go somewhere better
                 if ((player->state_flags & STATE_ON_LAND) == 0) {
                     anim_frame = 1;
-                } else if (abs(player->velocity.x) > 0.1) {
+                } else if (abs(player->acceleration.x) > 0.1) {
                     anim_time += delta_update_time;
                     if (anim_time > 120000000) {
                         anim_frame++;
