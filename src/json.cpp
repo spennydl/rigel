@@ -26,7 +26,7 @@ const char* next_non_ws_char(const char* start) {
     return start;
 }
 
-bool json_str_equals(JsonString jstr, const char* str, usize n)
+bool json_str_equals(const JsonString jstr, const char* str, usize n)
 {
     if (jstr.end == jstr.start) return false;
 
@@ -43,6 +43,20 @@ bool json_str_equals(JsonString jstr, const char* str, usize n)
         i++;
     }
     return true;
+}
+
+bool json_str_equals(const JsonString lhs, const JsonString rhs)
+{
+    const char* l = lhs.start;
+    const char* r = rhs.start;
+    while ((l < lhs.end) &&
+           (r < rhs.end) &&
+           (*l == *r))
+    {
+        l++;
+        r++;
+    }
+    return (l == lhs.end && r == rhs.end);
 }
 
 const char* extract_number(const char* start)
@@ -138,13 +152,11 @@ JsonToken get_next_token(const char* start)
     while (*result.str.end != '\0') {
         if (json_str_equals(result.str, "true", 4)) {
             result.type = TOK_TRUE;
-            std::cout << result.str.start[0] << "/" << result.str.end[0] << std::endl;
             return result;
         }
 
         if (json_str_equals(result.str, "false", 5)) {
             result.type = TOK_FALSE;
-            std::cout << result.str.start[0] << "/" << result.str.end[0] << std::endl;
             return result;
         }
 
@@ -157,6 +169,11 @@ JsonToken get_next_token(const char* start)
     }
 
     return result;
+}
+
+JsonString token_string_to_string(JsonString token)
+{
+    return JsonString { token.start + 1, token.end - 1 };
 }
 
 JsonObj* parse_json_obj(mem::Arena* work_mem, const char** obj_str);
@@ -182,7 +199,7 @@ bool parse_json_array(JsonValue* value, mem::Arena* work_mem, const char** obj_s
         value->type = JSON_STRING_ARRAY;
         value->string_array = work_mem->alloc_simple<JsonArray<JsonString>>();
         value->string_array->arr = work_mem->alloc_simple<JsonString>();
-        value->string_array->arr[n] = tok.str;
+        value->string_array->arr[n] = token_string_to_string(tok.str);
         n += 1;
 
         while (true) {
@@ -203,7 +220,7 @@ bool parse_json_array(JsonValue* value, mem::Arena* work_mem, const char** obj_s
                 return false;
             }
             work_mem->alloc_simple<JsonString>();
-            value->string_array->arr[n] = tok.str;
+            value->string_array->arr[n] = token_string_to_string(tok.str);
             n += 1;
 
         }
@@ -295,6 +312,82 @@ bool parse_json_array(JsonValue* value, mem::Arena* work_mem, const char** obj_s
     return false;
 }
 
+JsonValue* jsonobj__create_mapping(JsonObj* obj, JsonString key)
+{
+    assert(obj->count < N_HASHES && "too many entries in json");
+
+    u64 hash = dbj2(key);
+    usize index = hash & (N_HASHES - 1);
+
+    JsonObjEntry* entry = obj->entries + index;
+    if (entry->key.start)
+    {
+        // something is there
+        while (entry->key.start)
+        {
+            index = (++index) & (N_HASHES - 1);
+            entry = obj->entries + index;
+        }
+    }
+
+    entry->key = key;
+    obj->count += 1;
+    return &entry->value;
+}
+
+void jsonobj__add(JsonObj* obj, JsonString key, JsonValue value)
+{
+    assert(obj->count < N_HASHES && "too many entries in json");
+
+    u64 hash = dbj2(key);
+    usize index = hash & (N_HASHES - 1);
+
+    JsonObjEntry* entry = obj->entries + index;
+    if (entry->key.start)
+    {
+        // something is there
+        while (entry->key.start)
+        {
+            index = (++index) & (N_HASHES - 1);
+            entry = obj->entries + index;
+        }
+    }
+
+    entry->key = key;
+    entry->value = value;
+    obj->count += 1;
+}
+
+JsonValue* jsonobj_get(JsonObj* obj, const char* key, usize key_len)
+{
+    u64 hash = dbj2(key, key_len);
+    usize index = hash & (N_HASHES - 1);
+
+    JsonObjEntry* entry = obj->entries + index;
+
+    if (entry->key.start && json_str_equals(entry->key, key, key_len))
+    {
+        return &entry->value;
+    }
+
+    while (true)
+    {
+        index = (++index) & (N_HASHES - 1);
+        entry = obj->entries + index;
+        if (entry->key.start)
+        {
+            if (json_str_equals(entry->key, key, key_len))
+            {
+                return &entry->value;
+            }
+        }
+        else
+        {
+            return nullptr;
+        }
+    }
+}
+
 JsonObj* parse_json_obj(mem::Arena* work_mem, const char** obj_str)
 {
     JsonToken tok;
@@ -302,9 +395,8 @@ JsonObj* parse_json_obj(mem::Arena* work_mem, const char** obj_str)
     tok = get_next_token(*obj_str);
     assert(tok.type == TOK_OPEN_CURLY_BRACE && "malformed json obj");
 
+    // TODO: this needs to be 0'd!
     JsonObj* result = work_mem->alloc_simple<JsonObj>();
-    result->kvps = nullptr;
-    JsonKVP** tail = &(result->kvps);
 
     //cursor = next_non_ws_char(tok.str.end);
     //tok = get_next_token(cursor);
@@ -317,9 +409,8 @@ JsonObj* parse_json_obj(mem::Arena* work_mem, const char** obj_str)
             std::cout << "Unexpected token type " << tok.type << std::endl;
             return nullptr;
         }
-        *tail = work_mem->alloc_simple<JsonKVP>();
-        (*tail)->next = nullptr;
-        (*tail)->key = tok.str;
+        JsonString key = token_string_to_string(tok.str);
+        JsonValue* value = jsonobj__create_mapping(result, key);
 
         cursor = next_non_ws_char(tok.str.end);
         tok = get_next_token(cursor);
@@ -331,22 +422,23 @@ JsonObj* parse_json_obj(mem::Arena* work_mem, const char** obj_str)
         cursor = next_non_ws_char(tok.str.end);
         tok = get_next_token(cursor);
         if (tok.type == TOK_OPEN_CURLY_BRACE) {
-            (*tail)->value.type = JSON_OBJECT;
-            (*tail)->value.object = parse_json_obj(work_mem, &cursor);
+
+            value->type = JSON_OBJECT;
+            value->object = parse_json_obj(work_mem, &cursor);
         }
 
         if (tok.type == TOK_STRING) {
-            (*tail)->value.type = JSON_STRING;
-            (*tail)->value.string = work_mem->alloc_simple<JsonString>();
-            *(*tail)->value.string = tok.str;
+            value->type = JSON_STRING;
+            value->string = work_mem->alloc_simple<JsonString>();
+            *value->string = token_string_to_string(tok.str);
             cursor = next_non_ws_char(tok.str.end);
         }
 
         if (tok.type == TOK_NUMBER) {
-            (*tail)->value.type = JSON_NUMBER;
+            value->type = JSON_NUMBER;
             // TODO: make a proper number type
-            (*tail)->value.number = work_mem->alloc_simple<JsonNumber>();
-            if (!extract_json_number(tok, (*tail)->value.number)) {
+            value->number = work_mem->alloc_simple<JsonNumber>();
+            if (!extract_json_number(tok, value->number)) {
                 std::cout << "err: malformed number" << std::endl;
                 return nullptr;
             }
@@ -354,20 +446,20 @@ JsonObj* parse_json_obj(mem::Arena* work_mem, const char** obj_str)
         }
 
         if (tok.type == TOK_TRUE || tok.type == TOK_FALSE) {
-            (*tail)->value.type = JSON_BOOL;
-            (*tail)->value.jbool = work_mem->alloc_simple<bool>();
-            *(*tail)->value.jbool = tok.type == TOK_TRUE;
+            value->type = JSON_BOOL;
+            value->jbool = work_mem->alloc_simple<bool>();
+            *value->jbool = tok.type == TOK_TRUE;
             cursor = tok.str.end;
         }
 
         if (tok.type == TOK_NULL) {
-            (*tail)->value.type = JSON_NULL;
+            value->type = JSON_NULL;
             cursor = tok.str.end;
         }
 
         if (tok.type == TOK_OPEN_SQUARE_BRACE) {
             cursor = next_non_ws_char(tok.str.end);
-            if (!parse_json_array(&(*tail)->value, work_mem, &cursor)) {
+            if (!parse_json_array(value, work_mem, &cursor)) {
                 return nullptr;
             }
         }
@@ -379,18 +471,15 @@ JsonObj* parse_json_obj(mem::Arena* work_mem, const char** obj_str)
             std::cout << "Err: expected comma or end of object but got " << tok.type << std::endl;
             return nullptr;
         }
-        tail = &(*tail)->next;
     }
 
     *obj_str = tok.str.end;
     return result;
 }
 
-JsonValue* parse_json_file(mem::Arena* work_mem, const char* file_name)
+JsonValue* parse_json_string(mem::Arena* work_mem, const char* json_str)
 {
-    const char* buffer = (const char*)slurp_into_mem(work_mem, file_name);
-
-    const char* cursor = buffer;
+    const char* cursor = json_str;
     JsonValue* result = work_mem->alloc_simple<JsonValue>();
 
     //JsonValue* value = work_mem->alloc_simple<JsonValue>();
@@ -425,6 +514,12 @@ JsonValue* parse_json_file(mem::Arena* work_mem, const char* file_name)
     }
 
     return result;
+}
+
+JsonValue* parse_json_file(mem::Arena* work_mem, const char* file_name)
+{
+    const char* buffer = (const char*)slurp_into_mem(work_mem, file_name);
+    return parse_json_string(work_mem, buffer);
 }
 
 }

@@ -35,6 +35,15 @@ struct Arena
 
     void reinit() { next_free_idx = 0; }
 
+    void reinit_zeroed()
+    {
+        for (usize i = 0; i < next_free_idx; i++)
+        {
+            mem_begin[i] = 0;
+        }
+        next_free_idx = 0;
+    }
+
     Arena alloc_sub_arena(std::size_t size)
     {
         auto base = next_free_idx;

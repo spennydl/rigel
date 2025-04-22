@@ -21,15 +21,22 @@
  Things are looking much better in here.
 
  Threads to pull on:
- - we need a proper math lib. if we could get rid of glm i'd be super happy too. This may
-   be a good task for a slow day.
+ - level loading needs work. i think it's time to rip out tinyxml and say thanks for your service.
+   - Switch to loading from json and rip out tinyxml2
+   - Load entities, lights, and objects from json exported from tiled
+   - create the concept of trigger zones, load from json
+   - hot-reloading
+   - use trigger zones to switch between levels
+ - text rendering!
+ - debug line rendering!
  - pull player behavior out into a more final place. Was thinking a brain sorta abstraction,
    but I dunno.
- - DONE start laying in lighting.
+
+Done:
+ - start laying in lighting.
+ - we need a proper math lib. if we could get rid of glm i'd be super happy too. This may
+   be a good task for a slow day.
  - there is work to do on collision, but collision is a bloody pit.
- - level loading needs work. i think it's time to rip out tinyxml and say thanks for your service.
- - gotta figure out switching between screens/rooms. i have a feeling that this will be the next
-   major architectural thing to figure out, but part of me suspects it might not be so complicated.
 
 */
 
@@ -122,6 +129,53 @@ int main()
         field = field->next;
     }
 */
+    mem::GameMem memory = initialize_game_memory();
+    resource_initialize(memory.resource_arena);
+    TextResource json_txt = load_text_resource("resource/map/layered2.tmj");
+    JsonValue* json_val = parse_json_string(&memory.scratch_arena, json_txt.text);
+    assert(json_val->type == JSON_OBJECT && "didn't find a root obj");
+
+    JsonObj* json_obj = json_val->object;
+
+    JsonValue* v_width = jsonobj_get(json_obj, "width", 5);
+    if (v_width)
+    {
+        std::cout << "found width and width is " << v_width->number->value << std::endl;
+    }
+    else
+    {
+        std::cout << "it was null, yo" << std::endl;
+        return 1;
+    }
+
+    JsonValue* layers_v = jsonobj_get(json_obj, "layers", 6);
+    assert(layers_v->type == JSON_OBJECT_ARRAY && "layers was wrong");
+    JsonObjArray* layers = layers_v->obj_array;
+    while (layers)
+    {
+        JsonObj* obj = layers->obj;
+        auto name = jsonobj_get(obj, "name", 4);
+        assert(name && "no name");
+
+        if (json_str_equals(*name->string, "fg", 2))
+        {
+            std::cout << "found fg layer" << std::endl;
+            auto tiles = jsonobj_get(obj, "data", 4);
+            assert(tiles && "no tiles");
+
+            auto num_array = tiles->number_array;
+            auto count = num_array->n;
+            auto arr = num_array->arr;
+            for (int i = 0; i < count; i++)
+            {
+                std::cout << arr[i].value << ", " << std::endl;
+            }
+            break;
+        }
+        layers = layers->next;
+    }
+
+    return 0;
 
     SDL_Init(SDL_INIT_VIDEO);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
@@ -143,7 +197,7 @@ int main()
     std::cout << "can have " << tex_units << " per shader" << std::endl;
     glGetIntegerv(GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS, &tex_units);
     std::cout << "can have " << tex_units << " combined" << std::endl;
-    mem::GameMem memory = initialize_game_memory();
+    //mem::GameMem memory = initialize_game_memory();
 
     i32 w, h;
     SDL_GetRenderOutputSize(sdl_renderer, &w, &h);

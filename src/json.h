@@ -12,7 +12,8 @@ struct JsonString {
     const char* start;
     const char* end;
 };
-bool json_str_equals(JsonString jstr, const char* str, usize n);
+bool json_str_equals(const JsonString jstr, const char* str, usize n);
+bool json_str_equals(const JsonString lhs, const JsonString rhs);
 
 enum JsonTokenType {
     JSON_TOKEN_UNDEF,
@@ -83,16 +84,45 @@ struct JsonValue {
     };
 };
 
-struct JsonKVP {
+struct JsonObjEntry
+{
     JsonString key;
     JsonValue value;
-    JsonKVP* next;
 };
 
+#define N_HASHES 512
 struct JsonObj {
-    JsonKVP* kvps;
+    JsonObjEntry entries[N_HASHES];
+    u32 count;
 };
 
+inline u64
+dbj2(const JsonString s)
+{
+    u64 hash = 5381;
+    const char* start = s.start;
+
+    while (start < s.end)
+    {
+        hash = ((hash << 5) + hash) * *start;
+        start++;
+    }
+    return hash;
+}
+
+inline u64
+dbj2(const char* str, usize len)
+{
+    u64 hash = 5381;
+    for (usize i = 0; i < len && str[i]; i++)
+    {
+        hash = ((hash << 5) + hash) * str[i];
+    }
+    return hash;
+}
+JsonValue* jsonobj_get(JsonObj* obj, const char* key, usize key_len);
+
+JsonValue* parse_json_string(mem::Arena* work_mem, const char* json_str);
 JsonValue* parse_json_file(mem::Arena* work_mem, const char* file_name);
 
 } // namespace rigel
