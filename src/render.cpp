@@ -2,6 +2,7 @@
 #include "world.h"
 #include "resource.h"
 #include "rigelmath.h"
+#include "debug.h"
 #include <glad/glad.h>
 
 // TODO: remove
@@ -15,7 +16,34 @@ namespace rigel {
 namespace render {
 
 static Shader game_shaders[N_GAME_SHADERS];
+
+struct RenderState
+{
+    mem::Arena* gfx_arena;
+
+    RenderTarget internal_target;
+    RenderTarget screen_target;
+    RenderTarget shadowmap_target;
+    GpuQuad screen;
+
+    Rectangle current_viewport;
+
+    // TODO: should this be here?
+    GLuint global_ubo;
+    GlobalUniforms global_uniforms;
+};
+
+
 static RenderState render_state;
+
+#ifdef RIGEL_DEBUG
+struct DebugRenderState
+{
+    GLuint lines_vao;
+    GLuint lines_vbo;
+};
+static DebugRenderState debug_state;
+#endif
 
 bool
 check_shader_status(GLuint id, bool prog)
@@ -605,6 +633,57 @@ RenderTarget make_render_to_array_texture_target(i32 w, i32 h, i32 layers, usize
     return result;
 }
 
+#ifdef RIGEL_DEBUG
+
+void render_debug_init(mem::Arena* gfx_arena)
+{
+    // lines buffers
+    glGenBuffers(1, &debug_state.lines_vbo);
+    glGenVertexArrays(1, &debug_state.lines_vao);
+
+    glBindVertexArray(debug_state.lines_vao);
+    glBindBuffer(GL_ARRAY_BUFFER, debug_state.lines_vbo);
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(f32), (void*)0);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(f32), (void*)(3 * sizeof(f32)));
+    glEnableVertexAttribArray(1);
+
+    glBindVertexArray(0);
+
+    //lines shader
+    Shader* dbg_line_shader = &game_shaders[DEBUG_LINE_SHADER];
+    TextResource dbg_line_vss = load_text_resource("resource/shader/vs_dbg_line.glsl");
+    TextResource dbg_line_fss = load_text_resource("resource/shader/fs_dbg_line.glsl");
+    dbg_line_shader->load_from_src(dbg_line_vss.text, dbg_line_fss.text);
+}
+
+void render_debug_lines()
+{
+    usize n_lines;
+    debug::DebugLine* lines = debug::get_lines_for_frame(&n_lines);
+
+    glBindVertexArray(debug_state.lines_vao);
+    glBindBuffer(GL_ARRAY_BUFFER, debug_state.lines_vbo);
+
+    glBufferData(GL_ARRAY_BUFFER, n_lines * sizeof(debug::DebugLine), lines, GL_STATIC_DRAW);
+
+    m::Mat4 screen_transform =
+        m::scale_by(m::Vec3 { 2.0f / 320.0f, 2.0f / 180.0f, 1.0f }) *
+        m::translation_by(m::Vec3 {-1.0f, -1.0f, 0.0f});
+    Shader shader = game_shaders[DEBUG_LINE_SHADER];
+    glUseProgram(shader.id);
+    glUniformMatrix4fv(glGetUniformLocation(shader.id, "screen_transform"),
+                       1,
+                       false,
+                       reinterpret_cast<f32*>(&screen_transform));
+
+    glDrawArrays(GL_LINES, 0, 2 * n_lines);
+    glBindVertexArray(0);
+}
+
+#endif
+
 void initialize_renderer(mem::Arena* gfx_arena, f32 fb_width, f32 fb_height)
 {
     render_state.gfx_arena = gfx_arena;
@@ -653,6 +732,11 @@ void initialize_renderer(mem::Arena* gfx_arena, f32 fb_width, f32 fb_height)
         assets->ready_textures->map[i].texture_idx = RESOURCE_ID_NONE;
     }
     assets->renderable_world_chunk = gfx_arena->alloc_simple<WorldChunkDrawData>();
+
+#ifdef RIGEL_DEBUG
+    render_debug_init(gfx_arena);
+#endif
+
 }
 
 void begin_render(Viewport& viewport, GameState* game_state, f32 fb_width, f32 fb_height)
@@ -708,6 +792,16 @@ void lighting_pass(mem::Arena* scratch_arena, TileMap* tile_map)
         m::Vec4 point_light4 = render_state.global_uniforms.point_lights[light_idx];
         m::Vec3 point_light {point_light4.x, point_light4.y, point_light4.z};
         make_shadow_map_for_point_light(scratch_arena, tile_map, point_light, light_idx);
+
+#ifdef RIGEL_DEBUG
+        Rectangle point_light_rect;
+        point_light_rect.x = point_light.x - 1;
+        point_light_rect.y = point_light.y - 1;
+        point_light_rect.w = 2;
+        point_light_rect.h = 2;
+        debug::push_rect_outline(point_light_rect, m::Vec3 {1.0, 0, 0});
+#endif
+
     }
     end_render_to_target();
 
@@ -967,8 +1061,9 @@ void end_render()
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
     glBindVertexArray(0);
 
-    // TODO: sdl stuff
-
+#ifdef RIGEL_DEBUG
+    render_debug_lines();
+#endif
 }
 
 RenderTarget internal_target()

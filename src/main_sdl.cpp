@@ -6,7 +6,7 @@
 #include "json.h"
 #include "game.h"
 #include "rigelmath.h"
-
+#include "debug.h"
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_time.h>
@@ -62,7 +62,7 @@ initialize_game_memory()
     assert(gs_ptr && "Couldn't map game state");
     memory.game_state_storage = reinterpret_cast<byte_ptr*>(gs_ptr);
 
-    memory.ephemeral_storage_size = 16 * ONE_MB;
+    memory.ephemeral_storage_size = 20 * ONE_MB;
     auto es_ptr = mmap(nullptr,
                        memory.ephemeral_storage_size,
                        PROT_READ | PROT_WRITE,
@@ -85,6 +85,7 @@ initialize_game_memory()
     memory.scratch_arena = memory.ephemeral_arena.alloc_sub_arena(2 * ONE_MB);
     memory.resource_arena = memory.ephemeral_arena.alloc_sub_arena(8 * ONE_MB);
     memory.gfx_arena = memory.ephemeral_arena.alloc_sub_arena(2 * ONE_KB);
+    memory.debug_arena = memory.ephemeral_arena.alloc_sub_arena(1 * ONE_MB);
 
     std::cout << "memory map:" << std::endl;
     std::cout << "game state: " << (mem_ptr*)memory.game_state_arena.mem_begin << " for " << memory.game_state_arena.arena_bytes << " bytes" << std::endl;
@@ -95,88 +96,13 @@ initialize_game_memory()
     std::cout << "scratch: " << (mem_ptr*)memory.scratch_arena.mem_begin << " for " << memory.scratch_arena.arena_bytes << " bytes" << std::endl;
     std::cout << "resource: " << (mem_ptr*)memory.resource_arena.mem_begin << " for " << memory.resource_arena.arena_bytes << " bytes" << std::endl;
     std::cout << "gfx: " << (mem_ptr*)memory.gfx_arena.mem_begin << " for " << memory.gfx_arena.arena_bytes << " bytes" << std::endl;
+    std::cout << "debug: " << (mem_ptr*)memory.debug_arena.mem_begin << " for " << memory.debug_arena.arena_bytes << " bytes" << std::endl;
     return memory;
 }
 
 
 int main()
 {
-    //////////////////////////////////
-/*
-    mem::GameMem memory = initialize_game_memory();
-    auto json_head = parse_json_file(&memory.scratch_arena, "resource/map/layeredlevel.tmj");
-    std::cout << "**********************************" << std::endl;
-    std::cout << "head type is " << json_head->type << std::endl;
-
-    auto field = json_head->object->kvps;
-    while (field) {
-        if (json_str_equals(field->key, "\"layers\"", 8)) {
-            std::cout << "found layers" << std::endl;
-            auto layers_obj = field->value.obj_array->obj;
-            auto layer_field = layers_obj->kvps;
-            while (layer_field) {
-                if (json_str_equals(layer_field->key, "\"data\"", 6)) {
-                    auto arr = layer_field->value.number_array;
-                    for (int i = 0; i < arr->n; i++) {
-                        std::cout << arr->arr[i].value << std::endl;
-                    }
-                    std::cout << "found " << arr->n << " tiles" << std::endl;
-                    break;
-                }
-                layer_field = layer_field->next;
-            }
-        }
-        field = field->next;
-    }
-*/
-    mem::GameMem memory = initialize_game_memory();
-    resource_initialize(memory.resource_arena);
-    TextResource json_txt = load_text_resource("resource/map/layered2.tmj");
-    JsonValue* json_val = parse_json_string(&memory.scratch_arena, json_txt.text);
-    assert(json_val->type == JSON_OBJECT && "didn't find a root obj");
-
-    JsonObj* json_obj = json_val->object;
-
-    JsonValue* v_width = jsonobj_get(json_obj, "width", 5);
-    if (v_width)
-    {
-        std::cout << "found width and width is " << v_width->number->value << std::endl;
-    }
-    else
-    {
-        std::cout << "it was null, yo" << std::endl;
-        return 1;
-    }
-
-    JsonValue* layers_v = jsonobj_get(json_obj, "layers", 6);
-    assert(layers_v->type == JSON_OBJECT_ARRAY && "layers was wrong");
-    JsonObjArray* layers = layers_v->obj_array;
-    while (layers)
-    {
-        JsonObj* obj = layers->obj;
-        auto name = jsonobj_get(obj, "name", 4);
-        assert(name && "no name");
-
-        if (json_str_equals(*name->string, "fg", 2))
-        {
-            std::cout << "found fg layer" << std::endl;
-            auto tiles = jsonobj_get(obj, "data", 4);
-            assert(tiles && "no tiles");
-
-            auto num_array = tiles->number_array;
-            auto count = num_array->n;
-            auto arr = num_array->arr;
-            for (int i = 0; i < count; i++)
-            {
-                std::cout << arr[i].value << ", " << std::endl;
-            }
-            break;
-        }
-        layers = layers->next;
-    }
-
-    return 0;
-
     SDL_Init(SDL_INIT_VIDEO);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 
@@ -197,13 +123,17 @@ int main()
     std::cout << "can have " << tex_units << " per shader" << std::endl;
     glGetIntegerv(GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS, &tex_units);
     std::cout << "can have " << tex_units << " combined" << std::endl;
-    //mem::GameMem memory = initialize_game_memory();
+    mem::GameMem memory = initialize_game_memory();
 
     i32 w, h;
     SDL_GetRenderOutputSize(sdl_renderer, &w, &h);
     std::cout << "the screen is " << w << "x" << h << std::endl;
 
     resource_initialize(memory.resource_arena);
+
+#ifdef RIGEL_DEBUG
+    debug::init_debug(&memory.debug_arena);
+#endif
 
     render::initialize_renderer(&memory.gfx_arena, w, h);
 
@@ -303,6 +233,17 @@ int main()
 
         i64 delta_update_time = iter_time - last_update_time;
         if (delta_update_time >= UPDATE_TIME_NS) {
+#ifdef RIGEL_DEBUG
+            debug::new_frame();
+
+            //debug::DebugLine line;
+            //line.start = { 10, 10, 0 };
+            //line.start_color = {1.0f, 1.0f, 1.0f};
+            //line.end = { 310.0f, 170.0f, 0.0f };
+            //line.end_color = {1.0f, 1.0f, 1.0f};
+//
+            //debug::push_debug_line(line);
+#endif
             while (delta_update_time > 0) {
                 f32 dt = delta_update_time / 1000000000.0f; // to seconds
                 //std::cout << dt << std::endl;

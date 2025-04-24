@@ -185,6 +185,7 @@ struct RenderTarget
 
 RenderTarget create_new_render_target();
 
+// TODO
 struct UniformLight
 {
     m::Vec4 position;
@@ -203,23 +204,10 @@ enum GameShaders {
     TILEMAP_DRAW_SHADER,
     ENTITY_DRAW_SHADER,
     TILE_OCCLUDER_SHADER,
+#ifdef RIGEL_DEBUG
+    DEBUG_LINE_SHADER,
+#endif
     N_GAME_SHADERS
-};
-
-struct RenderState
-{
-    mem::Arena* gfx_arena;
-
-    RenderTarget internal_target;
-    RenderTarget screen_target;
-    RenderTarget shadowmap_target;
-    GpuQuad screen;
-
-    Rectangle current_viewport;
-
-    // TODO: should this be here?
-    GLuint global_ubo;
-    GlobalUniforms global_uniforms;
 };
 
 void initialize_renderer(mem::Arena* gfx_arena, f32 fb_width, f32 fb_height);

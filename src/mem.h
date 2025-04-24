@@ -8,11 +8,14 @@
 typedef intptr_t mem_ptr;
 typedef uint8_t byte_ptr;
 
+
 namespace rigel {
 namespace mem {
 
-inline std::size_t
-align_sz(std::size_t sz, std::size_t align)
+typedef usize ArenaCheckpoint;
+
+inline usize
+align_sz(usize sz, usize align)
 {
     assert(align > 0);
     return (sz + align - 1) & ~(align - 1);
@@ -20,13 +23,13 @@ align_sz(std::size_t sz, std::size_t align)
 
 struct Arena
 {
-    std::size_t arena_bytes;
-    std::size_t next_free_idx;
+    usize arena_bytes;
+    usize next_free_idx;
     byte_ptr* mem_begin;
 
     Arena() : arena_bytes(0), next_free_idx(0), mem_begin(nullptr) {}
 
-    Arena(byte_ptr* memory, std::size_t size)
+    Arena(byte_ptr* memory, usize size)
       : arena_bytes(size)
       , next_free_idx(0)
       , mem_begin(memory)
@@ -44,7 +47,7 @@ struct Arena
         next_free_idx = 0;
     }
 
-    Arena alloc_sub_arena(std::size_t size)
+    Arena alloc_sub_arena(usize size)
     {
         auto base = next_free_idx;
         // we should always gurantee arenas start word-aligned
@@ -57,7 +60,7 @@ struct Arena
         return Arena(mem_begin + start, end - start);
     }
 
-    inline byte_ptr* alloc_bytes(std::size_t bytes, std::size_t align_to = 1)
+    inline byte_ptr* alloc_bytes(usize bytes, usize align_to = 1)
     {
         auto start = align_sz(next_free_idx, align_to);
         auto end = align_sz(start + bytes, align_to);
@@ -96,15 +99,38 @@ struct Arena
 
         return new (ptr) T(std::forward<Args>(args)...);
     }
+
+    inline ArenaCheckpoint checkpoint()
+    {
+        return next_free_idx;
+    }
+
+    inline void restore(ArenaCheckpoint checkpoint)
+    {
+        next_free_idx = checkpoint;
+    }
+
+    inline void restore_zeroed(ArenaCheckpoint checkpoint)
+    {
+        assert(checkpoint < next_free_idx && "invalid checkpoint");
+
+        for (usize c = checkpoint; c < next_free_idx; c++)
+        {
+            mem_begin[c] = 0;
+        }
+
+        next_free_idx = checkpoint;
+    }
+
 };
 
 struct GameMem
 {
     byte_ptr* game_state_storage;
-    std::size_t game_state_storage_size;
+    usize game_state_storage_size;
 
     byte_ptr* ephemeral_storage;
-    std::size_t ephemeral_storage_size;
+    usize ephemeral_storage_size;
 
     Arena game_state_arena;
     Arena ephemeral_arena;
@@ -113,6 +139,7 @@ struct GameMem
     Arena scratch_arena;
     Arena resource_arena;
     Arena gfx_arena;
+    Arena debug_arena;
 };
 
 } // namespace mem
