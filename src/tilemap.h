@@ -5,10 +5,6 @@
 #include "resource.h"
 #include "rigelmath.h"
 
-#include <tinyxml2.h>
-#include <iostream>
-#include <iostream>
-
 namespace rigel {
 
 #define TILE_WIDTH_PIXELS 8
@@ -76,8 +72,9 @@ tiles_to_world(m::Vec2 tile_coord)
     return tiles_to_world(tile_coord.x, tile_coord.y);
 
 }
-TileMap*
-load_tile_map_from_xml(mem::Arena& arena, TextResource xml_data);
+
+void
+fill_tilemap_from_array(TileMap* map, f32* array, usize n_elems);
 }
 
 

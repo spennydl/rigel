@@ -3,10 +3,6 @@
 #include "resource.h"
 #include "mem.h"
 
-#include <tinyxml2.h>
-#include <iostream>
-#include <sstream>
-
 namespace rigel {
 auto
 operator<<(std::ostream& os, const TileType& tt) -> std::ostream&
@@ -26,49 +22,23 @@ operator<<(std::ostream& os, const TileType& tt) -> std::ostream&
 }
 
 void
-parse_tile_csv(const char* csv, TileMap* map)
+fill_tilemap_from_array(TileMap* map, f32* array, usize n_elems)
 {
-    std::string line;
-    std::size_t rows = 0;
-    std::size_t cols = 0;
+    assert(n_elems == (WORLD_WIDTH_TILES * WORLD_HEIGHT_TILES) && "Unexpected number of tiles");
+
     usize n_nonempty = 0;
-
-    int map_size = WORLD_SIZE_TILES;
-
-    std::istringstream csvin(csv);
-    while (std::getline(csvin, line)) {
-        if ((rows * WORLD_WIDTH_TILES) + cols >= (WORLD_WIDTH_TILES * WORLD_HEIGHT_TILES)) {
-            std::cerr << "ERR: Overflowed tile map!" << std::endl;
-            std::cerr << rows << " x " << cols << std::endl;
-            return;
+    for (usize tile_i = 0; tile_i < n_elems; tile_i++)
+    {
+        if (array[tile_i] == 0)
+        {
+            map->tiles[tile_i] = TileType::EMPTY;
         }
-
-        if (line.size() == 0) {
-            continue;
+        else
+        {
+            map->tiles[tile_i] = TileType::WALL;
+            n_nonempty++;
         }
-
-        std::istringstream line_ss(line);
-        std::string tile_i;
-        while (std::getline(line_ss, tile_i, ',')) {
-            int tileno;
-            if (std::istringstream(tile_i) >> tileno) {
-                i32 idx = (rows * WORLD_WIDTH_TILES) + cols;
-                map->tile_sprites[idx] = tileno;
-                if (tileno == 0) {
-                    map->tiles[idx] = TileType::EMPTY;
-                } else {
-                    map->tiles[idx] = TileType::WALL;
-                    n_nonempty++;
-                }
-            } else {
-                std::cerr << "WARN: unexpected value in tile map csv"
-                          << std::endl;
-            }
-            cols++;
-        }
-
-        cols = 0;
-        rows++;
+        map->tile_sprites[tile_i] = array[tile_i];
     }
     map->n_nonempty_tiles = n_nonempty;
 }
@@ -84,53 +54,6 @@ dump_tile_map(const TileMap* tilemap)
         }
         std::cout << std::endl;
     }
-}
-
-TileMap*
-load_tile_map_from_xml(mem::Arena& arena, TextResource xml_data)
-{
-    tinyxml2::XMLDocument doc;
-    doc.Parse(xml_data.text, xml_data.length);
-
-    auto map = doc.FirstChildElement("map");
-    assert(map && "No map!");
-
-    auto width = map->IntAttribute("width");
-    auto height = map->IntAttribute("height");
-
-    assert(width == WORLD_WIDTH_TILES && "ERR: width is wrong");
-    assert(height == WORLD_HEIGHT_TILES && "ERR: height is wrong");
-
-    TileMap* tile_map = arena.alloc_simple<TileMap>();
-    TileMap* decoration = arena.alloc_simple<TileMap>();
-    TileMap* background = arena.alloc_simple<TileMap>();
-    tile_map->background = background;
-    tile_map->decoration = decoration;
-
-    bool fg = false;
-    bool bg = false;
-    bool dec = false;
-    auto map_el = map->FirstChildElement("layer");
-    while (!(fg && bg && dec)) {
-        if (strncmp(map_el->Attribute("name"), "fg", 2) == 0) {
-            auto data = map_el->FirstChildElement("data")->GetText();
-            parse_tile_csv(data, tile_map);
-            fg = true;
-        }
-        if (strncmp(map_el->Attribute("name"), "bg", 2) == 0) {
-            auto data = map_el->FirstChildElement("data")->GetText();
-            parse_tile_csv(data, background);
-            bg = true;
-        }
-        if (strncmp(map_el->Attribute("name"), "decoration", 10) == 0) {
-            auto data = map_el->FirstChildElement("data")->GetText();
-            parse_tile_csv(data, decoration);
-            dec = true;
-        }
-        map_el = map_el->NextSiblingElement("layer");
-    }
-
-    return tile_map;
 }
 
 } // namespace rigel

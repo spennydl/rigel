@@ -196,7 +196,8 @@ struct UniformLight
 struct GlobalUniforms
 {
     m::Mat4 screen_transform;
-    m::Vec4 point_lights[24];
+    UniformLight point_lights[24];
+    UniformLight circle_lights[24];
 };
 
 enum GameShaders {

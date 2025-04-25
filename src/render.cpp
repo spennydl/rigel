@@ -666,7 +666,7 @@ void render_debug_lines()
     glBindVertexArray(debug_state.lines_vao);
     glBindBuffer(GL_ARRAY_BUFFER, debug_state.lines_vbo);
 
-    glBufferData(GL_ARRAY_BUFFER, n_lines * sizeof(debug::DebugLine), lines, GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, n_lines * sizeof(debug::DebugLine), lines, GL_DYNAMIC_DRAW);
 
     m::Mat4 screen_transform =
         m::scale_by(m::Vec3 { 2.0f / 320.0f, 2.0f / 180.0f, 1.0f }) *
@@ -691,7 +691,7 @@ void initialize_renderer(mem::Arena* gfx_arena, f32 fb_width, f32 fb_height)
     // global UBO
     glGenBuffers(1, &render_state.global_ubo);
     glBindBuffer(GL_UNIFORM_BUFFER, render_state.global_ubo);
-    glBufferData(GL_UNIFORM_BUFFER, sizeof(GlobalUniforms), nullptr, GL_STATIC_DRAW);
+    glBufferData(GL_UNIFORM_BUFFER, sizeof(GlobalUniforms), nullptr, GL_DYNAMIC_DRAW);
     glBindBufferBase(GL_UNIFORM_BUFFER, 0, render_state.global_ubo);
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
@@ -762,8 +762,15 @@ void begin_render(Viewport& viewport, GameState* game_state, f32 fb_width, f32 f
     m::Vec3 player_center = player->position + player_collider.extents;
 
     render_state.global_uniforms.screen_transform = viewport.get_screen_transform();
-    render_state.global_uniforms.point_lights[0] = m::Vec4 {player_center.x, player_center.y, player_center.z, 0.0f};
-    render_state.global_uniforms.point_lights[1] = m::Vec4 {210.0f, 80.0f, 0.0f, 0.0f};
+    UniformLight player_point_light;
+    player_point_light.position = m::Vec4 {player_center.x, player_center.y, player_center.z, 0.0f};
+    player_point_light.color = m::Vec4 {1.0, 0.0f, 0.0f, 1.0f}; // fourth component could be strength?
+    render_state.global_uniforms.point_lights[0] = player_point_light;
+
+    UniformLight other_light;
+    other_light.position = m::Vec4 {210.0f, 80.0f, 0.0f, 0.0f};
+    other_light.color = m::Vec4 {0.0f, 0.0f, 1.0f, 1.0f};
+    render_state.global_uniforms.point_lights[1] = other_light;
 
     glBindBuffer(GL_UNIFORM_BUFFER, render_state.global_ubo);
     glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(GlobalUniforms), &render_state.global_uniforms);
@@ -789,17 +796,18 @@ void lighting_pass(mem::Arena* scratch_arena, TileMap* tile_map)
          light_idx < n_lights;
          light_idx++)
     {
-        m::Vec4 point_light4 = render_state.global_uniforms.point_lights[light_idx];
+        UniformLight* light = render_state.global_uniforms.point_lights + light_idx;
+        m::Vec4 point_light4 = light->position;
         m::Vec3 point_light {point_light4.x, point_light4.y, point_light4.z};
         make_shadow_map_for_point_light(scratch_arena, tile_map, point_light, light_idx);
 
 #ifdef RIGEL_DEBUG
         Rectangle point_light_rect;
-        point_light_rect.x = point_light.x - 1;
-        point_light_rect.y = point_light.y - 1;
+        point_light_rect.x = light->position.x - 1;
+        point_light_rect.y = light->position.y - 1;
         point_light_rect.w = 2;
         point_light_rect.h = 2;
-        debug::push_rect_outline(point_light_rect, m::Vec3 {1.0, 0, 0});
+        debug::push_rect_outline(point_light_rect, {light->color.r, light->color.g, light->color.b});
 #endif
 
     }

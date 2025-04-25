@@ -25,6 +25,19 @@ struct EntityHash
     usize index;
 };
 
+enum LightType
+{
+    LightType_Point,
+    LightType_Circle
+};
+
+struct Light
+{
+    LightType type;
+    m::Vec3 position;
+    m::Vec3 color;
+};
+
 struct WorldChunk
 {
     TileMap* active_map;
@@ -34,6 +47,8 @@ struct WorldChunk
     usize next_free_entity_idx;
     EntityHash entity_hash[MAX_ENTITIES];
     Entity entities[MAX_ENTITIES];
+
+    Light lights[24];
 
 
     // REVIEW
