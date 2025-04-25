@@ -15,6 +15,17 @@ struct JsonString {
 bool json_str_equals(const JsonString jstr, const char* str, usize n);
 bool json_str_equals(const JsonString lhs, const JsonString rhs);
 
+inline void
+json_str_copy(char* dst, JsonString* src)
+{
+    const char* start = src->start;
+    char* out = dst;
+    while (start != src->end && *start) {
+        *out++ = *start++;
+    }
+    *out = '\0';
+}
+
 enum JsonTokenType {
     JSON_TOKEN_UNDEF,
     TOK_OPEN_CURLY_BRACE,

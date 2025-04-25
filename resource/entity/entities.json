@@ -1,9 +1,14 @@
 {
     "EntityType_Player": {
-        "spritesheet": "pc.png",
+        "spritesheet": "resource/image/pc.png",
+        "frames": 5,
         "collider_width": 8,
         "collider_height": 16
     },
     "EntityType_Bumpngo": {
+        "spritesheet": "resource/image/pc.png",
+        "frames": 5,
+        "collider_width": 8,
+        "collider_height": 16
     }
 }

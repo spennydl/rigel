@@ -3,6 +3,7 @@
 
 #include "rigel.h"
 #include "world.h"
+#include "entity.h"
 #include "mem.h"
 
 namespace rigel {
@@ -12,6 +13,11 @@ struct GameState
 {
     WorldChunk* active_world_chunk;
 };
+
+extern EntityPrototype entity_prototypes[EntityType_NumberOfTypes];
+
+GameState*
+load_game(mem::GameMem& memory);
 
 inline GameState*
 initialize_game_state(mem::GameMem& memory)

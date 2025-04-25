@@ -19,6 +19,8 @@ namespace rigel {
 ///////////////////////////////////////////////////
 #define MAX_ENTITIES 64
 
+extern EntityPrototype entity_prototypes[EntityType_NumberOfTypes];
+
 struct EntityHash
 {
     EntityId id;
@@ -47,6 +49,7 @@ struct WorldChunk
     usize next_free_entity_idx;
     EntityHash entity_hash[MAX_ENTITIES];
     Entity entities[MAX_ENTITIES];
+    EntityId player_id;
 
     Light lights[24];
 
@@ -54,18 +57,12 @@ struct WorldChunk
     // REVIEW
     EntityId add_entity(mem::GameMem& mem,
                         EntityType type,
-                        SpriteResourceId sprite_id,
-                        m::Vec3 initial_position,
-                        Rectangle collider);
-    // REVIEW
-    Entity* add_player(mem::GameMem& mem,
-                               SpriteResourceId sprite_id,
-                               m::Vec3 initial_position,
-                               Rectangle collider);
+                        m::Vec3 initial_position);
 };
 
 WorldChunk*
 load_world_chunk(mem::GameMem& mem);
+
 
 } // namespace rigel
 #endif // RIGEL_WORLD_H_

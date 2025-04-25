@@ -137,12 +137,13 @@ int main()
 
     render::initialize_renderer(&memory.gfx_arena, w, h);
 
-    Rectangle player_collider = { .x = 0, .y = 0, .w = 7, .h = 17 };
-    ImageResource player_sprite = load_image_resource("resource/image/pcoutline.png", 5);
+    //Rectangle player_collider = { .x = 0, .y = 0, .w = 7, .h = 17 };
+    //ImageResource player_sprite = load_image_resource("resource/image/pcoutline.png", 5);
 
-    GameState* game_state = initialize_game_state(memory);
+    //GameState* game_state = initialize_game_state(memory);
+    GameState* game_state = load_game(memory);
     game_state->active_world_chunk = load_world_chunk(memory);
-    game_state->active_world_chunk->add_player(memory, player_sprite.resource_id, m::Vec3{40.0f, 64.0f, 0.0f}, player_collider);
+    //game_state->active_world_chunk->add_player(memory, player_sprite.resource_id, m::Vec3{40.0f, 64.0f, 0.0f}, player_collider);
 
     ImageResource tilesheet = load_image_resource("resource/image/tranquil_tunnels_transparent.png");
     render::make_world_chunk_renderable(&memory.scratch_arena, game_state->active_world_chunk, tilesheet);
@@ -248,6 +249,7 @@ int main()
                 f32 dt = delta_update_time / 1000000000.0f; // to seconds
                 //std::cout << dt << std::endl;
 
+                // TODO: use game_state->player_id
                 Entity* player = game_state->active_world_chunk->entities;
 
                 m::Vec3 new_acc = {0};

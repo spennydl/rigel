@@ -30,9 +30,42 @@ enum EntityStateFlag
 // perhaps? Do I need to?
 enum EntityType
 {
-    ENTITY_TYPE_PLAYER,
-    ENTITY_TYPE_BUMPNGO
+    EntityType_Player = 0,
+    EntityType_Bumpngo,
+    EntityType_NumberOfTypes
 };
+
+inline const char*
+get_str_for_entity_type(EntityType type)
+{
+    switch (type) {
+        case EntityType_Player:
+        {
+            return "EntityType_Player";
+        } break;
+        case EntityType_Bumpngo:
+        {
+            return "EntityType_Bumpngo";
+        } break;
+        default:
+        {
+            return nullptr;
+        }
+    }
+}
+
+inline EntityType
+get_entity_type_for_str(const char* type)
+{
+    if (strncmp(type, "EntityType_Player", 17) == 0) {
+        return EntityType_Player;
+    } else if (strncmp(type, "EntityType_Bumpngo", 18) == 0) {
+        return EntityType_Bumpngo;
+    } else {
+        return EntityType_NumberOfTypes;
+    }
+}
+
 
 struct Entity
 {

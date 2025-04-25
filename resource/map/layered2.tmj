@@ -125,8 +125,8 @@
                  "type":"Entity",
                  "visible":true,
                  "width":8,
-                 "x":32,
-                 "y":152
+                 "x":208,
+                 "y":80
                 }],
          "opacity":1,
          "type":"objectgroup",

@@ -54,8 +54,6 @@ struct InputState {
 
 extern InputState g_input_state;
 
-
-
 }
 
 
