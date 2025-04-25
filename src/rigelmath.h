@@ -604,6 +604,17 @@ round(f32 val)
     return (dist_to_floor >= 0.5) ? fval + signof(val) : fval;
 }
 
+inline u64
+dbj2(const char* str, usize len)
+{
+    u64 hash = 5381;
+    for (usize i = 0; i < len && str[i]; i++)
+    {
+        hash = ((hash << 5) + hash) * str[i];
+    }
+    return hash;
+}
+
 }
 }
 

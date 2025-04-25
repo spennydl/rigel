@@ -534,7 +534,7 @@ Texture* get_renderable_texture(ResourceId sprite_id)
     RenderableAssets* assets = reinterpret_cast<RenderableAssets*>(render_state.gfx_arena->mem_begin);
     TextureLookup* ready_textures = assets->ready_textures;
 
-    auto map_idx = sprite_id % 64;
+    auto map_idx = sprite_id & 63;
     auto map_entry = ready_textures->map + map_idx;
     if (map_entry->resource_id == sprite_id) {
         return ready_textures->textures + map_entry->texture_idx;

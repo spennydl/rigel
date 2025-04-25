@@ -89,6 +89,12 @@ inline void state_transition_fall_exclusive(Entity* e)
     e->state_flags = flags;
 }
 
+struct EntityPrototype
+{
+    ImageResource spritesheet;
+    Rectangle collider_dims;
+};
+
 
 } // namespace rigel
 

@@ -118,8 +118,8 @@
                         {
                          "name":"Type",
                          "propertytype":"EntityType",
-                         "type":"int",
-                         "value":0
+                         "type":"string",
+                         "value":"EntityType_Player"
                         }],
                  "rotation":0,
                  "type":"Entity",

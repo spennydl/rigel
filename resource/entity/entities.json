@@ -1,0 +1,9 @@
+{
+    "EntityType_Player": {
+        "spritesheet": "pc.png",
+        "collider_width": 8,
+        "collider_height": 16
+    },
+    "EntityType_Bumpngo": {
+    }
+}
