@@ -249,7 +249,7 @@ int main()
 //
             //debug::push_debug_line(line);
 #endif
-            while (delta_update_time > 0 && level_index == 0) {
+            while (delta_update_time > 0) {
                 f32 dt = delta_update_time / 1000000000.0f; // to seconds
                 //std::cout << dt << std::endl;
 

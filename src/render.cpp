@@ -796,7 +796,7 @@ void begin_render(Viewport& viewport, GameState* game_state, f32 fb_width, f32 f
     render_state.global_uniforms.screen_transform = viewport.get_screen_transform();
     UniformLight player_point_light;
     player_point_light.position = m::Vec4 {player_center.x, player_center.y, player_center.z, 0.0f};
-    player_point_light.color = m::Vec4 {1.0, 1.0f, 0.9f, 1.0f}; // fourth component could be strength?
+    player_point_light.color = m::Vec4 {0.6, 0.6f, 0.35f, 1.0f}; // fourth component could be strength?
     render_state.global_uniforms.point_lights[0] = player_point_light;
 
     UniformLight other_light;

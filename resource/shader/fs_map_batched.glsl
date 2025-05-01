@@ -36,7 +36,7 @@ void main()
         for (int voffset = -1; voffset < 2; voffset++) {
             for (int hoffset = -1; hoffset < 2; hoffset++) {
                 vec3 uv = vec3((frag.x + hoffset) / 320.0, (frag.y + voffset) / 180.0, light_index);
-                vec4 shadow_sample = vec4(0, 0, 0, 0);//texture(shadow_map, uv);
+                vec4 shadow_sample = texture(shadow_map, uv);
                 shadow_avg += shadow_sample.r;
             }
         }
