@@ -4,6 +4,7 @@
 #include "mem.h"
 #include "rigel.h"
 #include "entity.h"
+#include "collider.h"
 #include "tilemap.h"
 #include "resource.h"
 #include "rigelmath.h"
@@ -40,18 +41,35 @@ struct Light
     m::Vec3 color;
 };
 
+struct GameState;
+struct ZoneTrigger;
+typedef void (*ZoneTriggerAction)(ZoneTrigger* zone, GameState* game_state);
+
+struct ZoneTrigger
+{
+    i32 id;
+    Rectangle rect;
+    ZoneTriggerAction action;
+
+    union {
+        i64 data;
+        Entity* entity;
+    };
+};
+
 struct WorldChunk
 {
+    i32 level_index;
     TileMap* active_map;
 
-    // TODO: we will have _so few_ entities in one chunk.
-    // Just do the list? Or have a free list?
     usize next_free_entity_idx;
     EntityHash entity_hash[MAX_ENTITIES];
     Entity entities[MAX_ENTITIES];
     EntityId player_id;
 
     Light lights[24];
+
+    ZoneTrigger zone_triggers[16];
 
 
     // REVIEW
@@ -61,7 +79,7 @@ struct WorldChunk
 };
 
 WorldChunk*
-load_world_chunk(mem::GameMem& mem);
+load_world_chunk(mem::GameMem& mem, const char* file_path);
 
 
 } // namespace rigel

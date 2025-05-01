@@ -132,6 +132,16 @@ load_image_resource(const char* file_path, usize n_frames)
 }
 
 ImageResource
+get_or_load_image_resource(const char* file_path, usize n_frames)
+{
+    ImageResource check = get_image_resource(file_path);
+    if (check.resource_id == RESOURCE_ID_NONE) {
+        return load_image_resource(file_path, n_frames);
+    }
+    return check;
+}
+
+ImageResource
 get_image_resource(ResourceId id)
 {
     assert(id < resource_lookup->next_free_image_id && "OOB image resource access");

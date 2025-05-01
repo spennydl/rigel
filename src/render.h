@@ -109,7 +109,7 @@ render_tri(Tri& quad, Viewport& viewport, int r, int g, int b);
 struct BatchedTileRenderer {
     GLuint vao;
     usize n_tiles;
-    Texture tile_atlas;
+    ResourceId tile_sheet;
 
     // TODO: Tilemaps will never change. Why store them like I do? Why not store the geometry
     // we make here instead?
@@ -117,7 +117,7 @@ struct BatchedTileRenderer {
     // On second thought we absolutely need them in a grid format for spatial queries. Still,
     // might be nice to keep some around.
     BatchedTileRenderer(mem::Arena& scratch_arena, TileMap* tilemap, ImageResource atlas_image);
-    BatchedTileRenderer() : vao(0), n_tiles(0), tile_atlas() {}
+    BatchedTileRenderer() : vao(0), n_tiles(0), tile_sheet(0) {}
 
     void render(Viewport& viewport, Shader shader);
 };
@@ -148,20 +148,18 @@ struct ShaderLookup
 
 struct WorldChunkDrawData
 {
-    Shader background_shader;
+    i32 renderable;
     BatchedTileRenderer fg_renderer;
     BatchedTileRenderer bg_renderer;
     BatchedTileRenderer deco_renderer;
 };
-void make_world_chunk_renderable(mem::Arena* scratch_mem, WorldChunk* world_chunk, ImageResource tile_set);
+void make_world_chunk_renderable(mem::Arena* scratch_mem, WorldChunk* world_chunk);
 
 struct RenderableAssets
 {
     ShaderLookup* ready_shaders;
     TextureLookup* ready_textures;
-
-    // TODO: this will be a collection at some point
-    WorldChunkDrawData* renderable_world_chunk;
+    WorldChunkDrawData* renderable_world_maps;
 };
 
 Shader* get_renderable_shader(TextResource vs_src, TextResource fs_src);
@@ -215,9 +213,9 @@ void initialize_renderer(mem::Arena* gfx_arena, f32 fb_width, f32 fb_height);
 
 void begin_render(Viewport& vp, GameState* game_state, f32 fb_width, f32 fb_height);
 void lighting_pass(mem::Arena* scratch_arena, TileMap* tile_map);
-void render_foreground_layer(Viewport& viewport);
-void render_background_layer(Viewport& viewport);
-void render_decoration_layer(Viewport& viewport);
+void render_foreground_layer(Viewport& viewport, WorldChunk* world_chunk);
+void render_background_layer(Viewport& viewport, WorldChunk* world_chunk);
+void render_decoration_layer(Viewport& viewport, WorldChunk* world_chunk);
 void make_shadow_map_for_point_light(mem::Arena* scratch_arena, TileMap* tile_map, m::Vec3 light_pos, i32 light_idx);
 void render_all_entities(Viewport& viewport, WorldChunk* world_chunk, usize temp_anim_frame);
 

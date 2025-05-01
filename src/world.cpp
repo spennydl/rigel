@@ -8,7 +8,7 @@
 namespace rigel {
 
 WorldChunk*
-load_world_chunk(mem::GameMem& mem)
+load_world_chunk(mem::GameMem& mem, const char* file_path)
 {
     WorldChunk* result = mem.game_state_arena.alloc_simple<WorldChunk>();
 
@@ -22,7 +22,7 @@ load_world_chunk(mem::GameMem& mem)
     // TODO: this should be something that can hold lots of them I think
     mem::Arena tilemap_arena = mem.stage_arena.alloc_sub_arena(18 * ONE_KB);
 
-    TextResource world_data = load_text_resource("resource/map/layered2.tmj");
+    TextResource world_data = load_text_resource(file_path);
     auto root_obj_v = parse_json_string(&mem.scratch_arena, world_data.text);
     assert(root_obj_v->type == JSON_OBJECT && "expect an object at root");
     auto root = root_obj_v->object;
@@ -30,9 +30,14 @@ load_world_chunk(mem::GameMem& mem)
     TileMap* tile_map = tilemap_arena.alloc_simple<TileMap>();
     TileMap* decoration = tilemap_arena.alloc_simple<TileMap>();
     TileMap* background = tilemap_arena.alloc_simple<TileMap>();
+
+    ImageResource tilesheet = get_or_load_image_resource("resource/image/tranquil_tunnels_transparent.png");
+    tile_map->tile_sheet = tilesheet.resource_id;
+    decoration->tile_sheet = tilesheet.resource_id;
+    background->tile_sheet = tilesheet.resource_id;
+
     tile_map->background = background;
     tile_map->decoration = decoration;
-
     result->active_map = tile_map;
 
     auto width = jsonobj_get(root, "width", 5);
@@ -94,7 +99,13 @@ load_world_chunk(mem::GameMem& mem)
               decoration, reinterpret_cast<f32*>(data->arr), data->n);
             dec = true;
         } else if (json_str_equals(*name, "entities", 8)) {
-            auto objects = jsonobj_get(obj, "objects", 7)->obj_array;
+            auto objects_v = jsonobj_get(obj, "objects", 7);
+            // TODO: I need a better way to detect empty arrays
+            if (objects_v->type != JSON_OBJECT_ARRAY) {
+                head = head->next;
+                continue;
+            }
+            auto objects = objects_v->obj_array;
 
             while (objects) {
                 auto obj = objects->obj;

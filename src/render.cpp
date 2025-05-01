@@ -122,6 +122,8 @@ BatchedTileRenderer::BatchedTileRenderer(mem::Arena& scratch_arena, TileMap* til
 {
     usize quad_elems = 20;
     usize idx_elems = 6;
+
+    scratch_arena.reinit();
     f32* verts = scratch_arena.alloc_array<f32>(quad_elems * n_tiles);
     u32* indices = scratch_arena.alloc_array<usize>(idx_elems * n_tiles);
 
@@ -205,7 +207,7 @@ BatchedTileRenderer::BatchedTileRenderer(mem::Arena& scratch_arena, TileMap* til
 
     glBindVertexArray(0);
 
-    tile_atlas = make_texture(atlas_image);
+    tile_sheet = atlas_image.resource_id;
 
     scratch_arena.reinit();
 }
@@ -225,8 +227,9 @@ void BatchedTileRenderer::render(Viewport& viewport, Shader shader)
         m::translation_by(m::Vec3 {0.0f, -WORLD_HEIGHT_TILES, 0.0f}) *
         m::scale_by(m::Vec3 {8.0f, -8.0f, 0.0f});
 
+    Texture* tex = get_renderable_texture(tile_sheet);
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, tile_atlas.id);
+    glBindTexture(GL_TEXTURE_2D, tex->id);
 
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D_ARRAY, render_state.shadowmap_target.target_texture.id);
@@ -238,6 +241,7 @@ void BatchedTileRenderer::render(Viewport& viewport, Shader shader)
 
     glBindVertexArray(vao);
     glDrawElements(GL_TRIANGLES, 6 * n_tiles, GL_UNSIGNED_INT, 0);
+
     glBindVertexArray(0);
     glUseProgram(0);
 }
@@ -561,39 +565,67 @@ Texture* get_renderable_texture(ResourceId sprite_id)
         return result;
     }
 
-    assert(false && "Implement open addressing already you nerd");
+    assert(false && "out of map entries");
 }
 
-void make_world_chunk_renderable(mem::Arena* scratch_arena, WorldChunk* world_chunk, ImageResource tile_set)
+void make_world_chunk_renderable(mem::Arena* scratch_arena, WorldChunk* world_chunk)
 {
     RenderableAssets* assets = reinterpret_cast<RenderableAssets*>(render_state.gfx_arena->mem_begin);
-    WorldChunkDrawData* draw_data = assets->renderable_world_chunk;
+    WorldChunkDrawData* draw_data = assets->renderable_world_maps + world_chunk->level_index;
+
+    if (draw_data->renderable) {
+        return;
+    }
 
     TileMap* map = world_chunk->active_map;
+    ImageResource fg_tile_set = get_image_resource(map->tile_sheet);
+    ImageResource bg_tile_set = get_image_resource(map->background->tile_sheet);
+    ImageResource deco_tile_set = get_image_resource(map->decoration->tile_sheet);
 
-    draw_data->fg_renderer = BatchedTileRenderer(*scratch_arena, map, tile_set);
-    draw_data->bg_renderer = BatchedTileRenderer(*scratch_arena, map->background, tile_set);
-    draw_data->deco_renderer = BatchedTileRenderer(*scratch_arena, map->decoration, tile_set);
+    draw_data->fg_renderer = BatchedTileRenderer(*scratch_arena, map, fg_tile_set);
+    draw_data->bg_renderer = BatchedTileRenderer(*scratch_arena, map->background, bg_tile_set);
+    draw_data->deco_renderer = BatchedTileRenderer(*scratch_arena, map->decoration, deco_tile_set);
+
+    draw_data->renderable = 1;
 }
 
-const char* screen_vs_src = "#version 400 core\n"
-                            "layout (location = 0) in vec3 vert;\n"
-                            "layout (location = 1) in vec2 uv;\n"
-                            "out vec2 tex_uv;\n"
-                            "uniform mat4 screen_transform;\n"
-                            "uniform mat4 world_transform;\n"
-                            "void main() {\n"
-                            "gl_Position = screen_transform * world_transform * vec4(vert, 1.0);\n"
-                            "tex_uv = uv;\n"
-                            "}";
+const char* screen_vs_src = R"SRC(
+#version 400 core
+layout (location = 0) in vec3 vert;
+layout (location = 1) in vec2 uv;
+out vec2 tex_uv;
+uniform mat4 screen_transform;
+uniform mat4 world_transform;
 
-const char* screen_fs_src = "#version 400 core\n"
-                            "in vec2 tex_uv;\n"
-                            "uniform sampler2D game;\n"
-                            "out vec4 FragColor;\n"
-                            "void main(){\n"
-                            "FragColor = texture(game, tex_uv);\n"
-                            "}";
+void main() {
+    gl_Position = screen_transform * world_transform * vec4(vert, 1.0);
+    tex_uv = uv;
+})SRC";
+
+const char* screen_fs_src = R"SRC(
+#version 400 core
+in vec2 tex_uv;
+uniform sampler2D game;
+out vec4 FragColor;
+float dist[6] = float[](0.92, 0.96, 1.0, 1.0, 0.96, 0.92);
+
+void main(){
+    float y_pos = (tex_uv.y * 1080.0f);
+    int idx = int(y_pos) % 6;
+    float mult = dist[idx];
+    //float mult = 1 - (max(0, modded - 3) / 3.0);
+
+    float x_pos = (tex_uv.x * 1920.0);
+    vec2 left = vec2((x_pos - 1) / 1920.0, y_pos / 1080.0);
+    vec2 right = vec2((x_pos + 1) / 1920.0, y_pos / 1080.0);
+
+    vec4 left_color = texture(game, left);
+    vec4 center = texture(game, tex_uv);
+    vec4 right_color = texture(game, right);
+
+    vec4 final = vec4(left_color.r, center.g, right_color.b, center.a);
+    FragColor = mult * final;
+})SRC";
 
 RenderTarget make_render_to_texture_target(i32 w, i32 h)
 {
@@ -731,7 +763,7 @@ void initialize_renderer(mem::Arena* gfx_arena, f32 fb_width, f32 fb_height)
         assets->ready_textures->map[i].resource_id = RESOURCE_ID_NONE;
         assets->ready_textures->map[i].texture_idx = RESOURCE_ID_NONE;
     }
-    assets->renderable_world_chunk = gfx_arena->alloc_simple<WorldChunkDrawData>();
+    assets->renderable_world_maps = gfx_arena->alloc_array<WorldChunkDrawData>(2);
 
 #ifdef RIGEL_DEBUG
     render_debug_init(gfx_arena);
@@ -764,12 +796,12 @@ void begin_render(Viewport& viewport, GameState* game_state, f32 fb_width, f32 f
     render_state.global_uniforms.screen_transform = viewport.get_screen_transform();
     UniformLight player_point_light;
     player_point_light.position = m::Vec4 {player_center.x, player_center.y, player_center.z, 0.0f};
-    player_point_light.color = m::Vec4 {1.0, 0.0f, 0.0f, 1.0f}; // fourth component could be strength?
+    player_point_light.color = m::Vec4 {1.0, 1.0f, 0.9f, 1.0f}; // fourth component could be strength?
     render_state.global_uniforms.point_lights[0] = player_point_light;
 
     UniformLight other_light;
     other_light.position = m::Vec4 {210.0f, 80.0f, 0.0f, 0.0f};
-    other_light.color = m::Vec4 {0.0f, 0.0f, 1.0f, 1.0f};
+    other_light.color = m::Vec4 {0.3f, 1.0f, 1.0f, 1.0f};
     render_state.global_uniforms.point_lights[1] = other_light;
 
     glBindBuffer(GL_UNIFORM_BUFFER, render_state.global_ubo);
@@ -815,26 +847,29 @@ void lighting_pass(mem::Arena* scratch_arena, TileMap* tile_map)
 
 }
 
-void render_background_layer(Viewport& viewport)
+void render_background_layer(Viewport& viewport, WorldChunk* world_chunk)
 {
     RenderableAssets* assets = reinterpret_cast<RenderableAssets*>(render_state.gfx_arena->mem_begin);
-    WorldChunkDrawData* draw_data = assets->renderable_world_chunk;
+    WorldChunkDrawData* draw_data = assets->renderable_world_maps + world_chunk->level_index;
+    assert(draw_data->renderable && "Tried to render an unready background tile map");
 
     draw_data->bg_renderer.render(viewport, game_shaders[TILEMAP_DRAW_SHADER]);
 }
 
-void render_foreground_layer(Viewport& viewport)
+void render_foreground_layer(Viewport& viewport, WorldChunk* world_chunk)
 {
     RenderableAssets* assets = reinterpret_cast<RenderableAssets*>(render_state.gfx_arena->mem_begin);
-    WorldChunkDrawData* draw_data = assets->renderable_world_chunk;
+    WorldChunkDrawData* draw_data = assets->renderable_world_maps + world_chunk->level_index;
+    assert(draw_data->renderable && "Tried to render an unready foreground tile map");
 
     draw_data->fg_renderer.render(viewport, game_shaders[TILEMAP_DRAW_SHADER]);
 }
 
-void render_decoration_layer(Viewport& viewport)
+void render_decoration_layer(Viewport& viewport, WorldChunk* world_chunk)
 {
     RenderableAssets* assets = reinterpret_cast<RenderableAssets*>(render_state.gfx_arena->mem_begin);
-    WorldChunkDrawData* draw_data = assets->renderable_world_chunk;
+    WorldChunkDrawData* draw_data = assets->renderable_world_maps + world_chunk->level_index;
+    assert(draw_data->renderable && "Tried to render an unready decoration tile map");
 
     draw_data->deco_renderer.render(viewport, game_shaders[TILEMAP_DRAW_SHADER]);
 }
@@ -842,6 +877,8 @@ void render_decoration_layer(Viewport& viewport)
 void make_shadow_map_for_point_light(mem::Arena* scratch_arena, TileMap* tile_map, m::Vec3 light_pos, i32 light_index)
 {
     // we just need vec2 verts
+    scratch_arena->reinit();
+
     usize n_tiles = tile_map->n_nonempty_tiles;
     usize elems_per_quad = 4 * 3; // 4 verts, 3 components each
     usize idx_elems_per_quad = 6;
@@ -982,7 +1019,10 @@ void render_all_entities(Viewport& viewport, WorldChunk* world_chunk, usize temp
                         reinterpret_cast<f32*>(&world));
         glUniform1i(glGetUniformLocation(shader.id, "anim_frame"), temp_anim_frame);
         glUniform1i(glGetUniformLocation(shader.id, "sprite"), 0);
-        //usize facing_mult = e->velocity.x >= 0 ? 1 : -1;
+        // TODO: we need to update everything
+        if (e->facing_dir.last_observed_sign == 0) {
+            e->facing_dir.last_observed_sign = 1;
+        }
         glUniform1i(glGetUniformLocation(shader.id, "facing_mult"), e->facing_dir.last_observed_sign);
 
         glActiveTexture(GL_TEXTURE0);

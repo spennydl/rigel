@@ -112,6 +112,7 @@ TextResource get_text_resource(const char* key);
 
 // TODO: load n_frames from a file
 ImageResource load_image_resource(const char* file_path, usize n_frames = 1);
+ImageResource get_or_load_image_resource(const char* file_path, usize n_frames = 1);
 ImageResource get_image_resource(ResourceId id);
 ImageResource get_image_resource(const char* key);
 

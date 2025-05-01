@@ -22,21 +22,27 @@
 
  Threads to pull on:
  - level loading needs work. i think it's time to rip out tinyxml and say thanks for your service.
-   - Switch to loading from json and rip out tinyxml2
-   - Load entities, lights, and objects from json exported from tiled
+   - load lights and zones from json
    - create the concept of trigger zones, load from json
    - hot-reloading
    - use trigger zones to switch between levels
  - text rendering!
- - debug line rendering!
+ - lighting
+   - store lights in the world chunk and render them from there
+   - create a circle light type
+   - we need a notion of entity attachments so we can attach lights to entities
  - pull player behavior out into a more final place. Was thinking a brain sorta abstraction,
    but I dunno.
+ - controller input
 
 Done:
  - start laying in lighting.
  - we need a proper math lib. if we could get rid of glm i'd be super happy too. This may
    be a good task for a slow day.
  - there is work to do on collision, but collision is a bloody pit.
+ - Switch to loading from json and rip out tinyxml2
+ - load entities from json exported from tiles
+ - debug line rendering
 
 */
 
@@ -137,16 +143,7 @@ int main()
 
     render::initialize_renderer(&memory.gfx_arena, w, h);
 
-    //Rectangle player_collider = { .x = 0, .y = 0, .w = 7, .h = 17 };
-    //ImageResource player_sprite = load_image_resource("resource/image/pcoutline.png", 5);
-
-    //GameState* game_state = initialize_game_state(memory);
     GameState* game_state = load_game(memory);
-    game_state->active_world_chunk = load_world_chunk(memory);
-    //game_state->active_world_chunk->add_player(memory, player_sprite.resource_id, m::Vec3{40.0f, 64.0f, 0.0f}, player_collider);
-
-    ImageResource tilesheet = load_image_resource("resource/image/tranquil_tunnels_transparent.png");
-    render::make_world_chunk_renderable(&memory.scratch_arena, game_state->active_world_chunk, tilesheet);
 
     render::Viewport viewport;
     viewport.zoom(1.0);
@@ -167,6 +164,8 @@ int main()
 
     i64 anim_time = 0;
     usize anim_frame = 0;
+
+    int level_index = 0;
 
     while (running) {
         memory.scratch_arena.reinit();
@@ -217,6 +216,10 @@ int main()
                             g_input_state.move_right_requested = false;
                             break;
                         }
+                        case SDL_SCANCODE_T: {
+                            level_index = (level_index) ? 0 : 1;
+                            switch_world_chunk(memory, game_state, level_index);
+                        }
 
                     }
 
@@ -232,6 +235,7 @@ int main()
             std::cerr << "warn: couln't get current time? " << SDL_GetError() << std::endl;
         }
 
+
         i64 delta_update_time = iter_time - last_update_time;
         if (delta_update_time >= UPDATE_TIME_NS) {
 #ifdef RIGEL_DEBUG
@@ -245,7 +249,7 @@ int main()
 //
             //debug::push_debug_line(line);
 #endif
-            while (delta_update_time > 0) {
+            while (delta_update_time > 0 && level_index == 0) {
                 f32 dt = delta_update_time / 1000000000.0f; // to seconds
                 //std::cout << dt << std::endl;
 
@@ -325,27 +329,21 @@ int main()
 
         i64 delta_render_time = iter_time - last_render_time;
         if (delta_render_time >= RENDER_TIME_NS) {
+
+            auto world_chunk = game_state->active_world_chunk;
+
             render::begin_render(viewport, game_state, w, h);
 
-            render::lighting_pass(&memory.scratch_arena, game_state->active_world_chunk->active_map);
+            render::lighting_pass(&memory.scratch_arena, world_chunk->active_map);
 
             render::begin_render_to_internal_target();
 
-            render::render_background_layer(viewport);
-#if 0
-            // TODO: I need a debug renderer that will let me do this stuff
-            // from anywhere in the codebase, even it all it does is draw lines.
-            Rectangle player_rect = rect_from_aabb(player->colliders->aabbs[0]);
-            player_rect.x = player->position.x;
-            player_rect.y = player->position.y;
-            render::draw_rectangle(rect_from_aabb(broad_player_aabb), 0.0, 1.0, 0.0);
-            render::draw_rectangle(player_rect, 1.0, 0.0, 0.0);
-#endif
+            render::render_background_layer(viewport, world_chunk);
 
-            render::render_all_entities(viewport, game_state->active_world_chunk, anim_frame);
+            render::render_all_entities(viewport, world_chunk, anim_frame);
 
-            render::render_foreground_layer(viewport);
-            render::render_decoration_layer(viewport);
+            render::render_foreground_layer(viewport, world_chunk);
+            render::render_decoration_layer(viewport, world_chunk);
 
             render::end_render_to_target();
 
