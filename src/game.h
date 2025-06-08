@@ -2,12 +2,21 @@
 #define RIGEL_GAME_H
 
 #include "rigel.h"
-#include "world.h"
 #include "entity.h"
 #include "mem.h"
 
 namespace rigel {
 
+enum Direction
+{
+    Direction_Stay,
+    Direction_Up,
+    Direction_Right,
+    Direction_Down,
+    Direction_Left
+};
+
+struct WorldChunk;
 // TODO: what is this and where does it go
 struct GameState
 {
@@ -17,17 +26,17 @@ struct GameState
 
 extern EntityPrototype entity_prototypes[EntityType_NumberOfTypes];
 
-enum ZoneTriggerActions
-{
-    ZoneTriggerActions_SwitchLevel = 0,
-    ZoneTriggerActions_NumActions
-};
-
 GameState*
 load_game(mem::GameMem& memory);
 
 void
 switch_world_chunk(mem::GameMem& mem, GameState* state, i32 index);
+Direction
+check_for_level_change(Entity* player);
+void
+simulate_one_tick(mem::GameMem& memory, GameState* game_state, f32 dt);
+void
+update_animations(WorldChunk* active_chunk, f32 dt);
 
 inline GameState*
 initialize_game_state(mem::GameMem& memory)
@@ -36,7 +45,6 @@ initialize_game_state(mem::GameMem& memory)
     return state;
 }
 
-void sim_one_tick(f32 timestep, GameState* game_state);
 }
 
 

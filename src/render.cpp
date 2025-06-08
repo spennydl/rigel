@@ -990,7 +990,7 @@ void make_shadow_map_for_point_light(mem::Arena* scratch_arena, TileMap* tile_ma
     scratch_arena->reinit();
 }
 
-void render_all_entities(Viewport& viewport, WorldChunk* world_chunk, usize temp_anim_frame)
+void render_all_entities(Viewport& viewport, WorldChunk* world_chunk)
 {
     RenderableAssets* assets = reinterpret_cast<RenderableAssets*>(render_state.gfx_arena->mem_begin);
     TextureLookup* texture_lookup = assets->ready_textures;
@@ -1017,7 +1017,7 @@ void render_all_entities(Viewport& viewport, WorldChunk* world_chunk, usize temp
                         1,
                         false,
                         reinterpret_cast<f32*>(&world));
-        glUniform1i(glGetUniformLocation(shader.id, "anim_frame"), temp_anim_frame);
+        glUniform1i(glGetUniformLocation(shader.id, "anim_frame"), e->animation.current_frame);
         glUniform1i(glGetUniformLocation(shader.id, "sprite"), 0);
         // TODO: we need to update everything
         if (e->facing_dir.last_observed_sign == 0) {

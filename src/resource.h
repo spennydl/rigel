@@ -14,22 +14,8 @@ constexpr static i32 RESOURCE_ID_NONE = -1;
 
 #define MAX_TEXT_RESOURCES 128
 #define MAX_IMAGE_RESOURCES 128
-
-struct TextResource {
-    ResourceId resource_id;
-    usize length;
-    const char* text;
-};
-
-struct ImageResource {
-    ResourceId resource_id;
-    usize width;
-    usize height;
-    usize channels;
-    usize n_frames;
-
-    ubyte* data;
-};
+#define MAX_ANIM_RESOURCES 128
+#define MAX_ANIMATIONS 8
 
 template<typename T, usize max>
 struct StringKeyedMap
@@ -88,7 +74,37 @@ struct StringKeyedMap
     }
 };
 
+struct TextResource {
+    ResourceId resource_id;
+    usize length;
+    const char* text;
+};
 
+struct ImageResource {
+    ResourceId resource_id;
+    usize width;
+    usize height;
+    usize channels;
+    usize n_frames;
+
+    ubyte* data;
+};
+
+struct Animation
+{
+    char name[32];
+    usize start_frame;
+    usize end_frame;
+    usize ms_per_frame;
+};
+
+struct AnimationResource
+{
+    ResourceId id;
+    usize n_frames;
+    // TODO(spencer): This kinda sucks, but it might be what I want?
+    StringKeyedMap<Animation, MAX_ANIMATIONS> animations;
+};
 
 // TODO: This needs to be a proper hash map now
 struct ResourceLookup {
@@ -99,6 +115,10 @@ struct ResourceLookup {
     usize next_free_image_id;
     StringKeyedMap<ResourceId, MAX_IMAGE_RESOURCES> image_resource_map;
     ImageResource image_resources[MAX_IMAGE_RESOURCES];
+
+    usize next_free_anim_id;
+    StringKeyedMap<ResourceId, MAX_ANIM_RESOURCES> anim_resource_map;
+    AnimationResource anim_resources[MAX_ANIM_RESOURCES];
 
     mem::Arena text_storage;
     mem::Arena image_storage;
@@ -115,6 +135,11 @@ ImageResource load_image_resource(const char* file_path, usize n_frames = 1);
 ImageResource get_or_load_image_resource(const char* file_path, usize n_frames = 1);
 ImageResource get_image_resource(ResourceId id);
 ImageResource get_image_resource(const char* key);
+
+AnimationResource* load_anim_resource(mem::Arena* scratch_arena, const char* file_path);
+AnimationResource* get_or_load_anim_resource(mem::Arena* scratch_arena, const char* file_path);
+AnimationResource* get_anim_resource(ResourceId id);
+AnimationResource* get_anim_resource(const char* key);
 
 } // namespace rigel
 

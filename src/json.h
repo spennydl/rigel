@@ -16,11 +16,27 @@ bool json_str_equals(const JsonString jstr, const char* str, usize n);
 bool json_str_equals(const JsonString lhs, const JsonString rhs);
 
 inline void
-json_str_copy(char* dst, JsonString* src)
+json_str_copy(char* dst, JsonString* src, i32 n = -1)
 {
+    i32 to_copy = 0;
+    if (n < 0)
+    {
+        to_copy = src->end - src->start;
+    }
+    else if (n == 0)
+    {
+        return;
+    }
+    else
+    {
+        to_copy = n - 1;
+    }
+
     const char* start = src->start;
     char* out = dst;
-    while (start != src->end && *start) {
+
+    while (to_copy-- && start != src->end && *start)
+    {
         *out++ = *start++;
     }
     *out = '\0';
@@ -101,7 +117,8 @@ struct JsonObjEntry
     JsonValue value;
 };
 
-#define N_HASHES 512
+// TODO(spencer): these should reeeeeeally be dynamically alloc'd
+#define N_HASHES 128
 struct JsonObj {
     JsonObjEntry entries[N_HASHES];
     u32 count;
@@ -115,7 +132,7 @@ dbj2(const JsonString s)
 
     while (start < s.end)
     {
-        hash = ((hash << 5) + hash) * *start;
+        hash = ((hash << 5) + hash) + *start;
         start++;
     }
     return hash;
@@ -127,7 +144,7 @@ dbj2(const char* str, usize len)
     u64 hash = 5381;
     for (usize i = 0; i < len && str[i]; i++)
     {
-        hash = ((hash << 5) + hash) * str[i];
+        hash = ((hash << 5) + hash) + str[i];
     }
     return hash;
 }

@@ -2,6 +2,7 @@
 #include "rigel.h"
 #include "mem.h"
 #include "rigelmath.h"
+#include "json.h"
 
 #include <iostream>
 #include <fstream>
@@ -28,8 +29,8 @@ resource_initialize(mem::Arena& resource_arena)
 {
     resource_lookup = resource_arena.alloc_simple<ResourceLookup>();
 
-    resource_lookup->text_storage = resource_arena.alloc_sub_arena(32 * ONE_KB);
-    resource_lookup->image_storage = resource_arena.alloc_sub_arena(7 * ONE_MB);
+    resource_lookup->text_storage = resource_arena.alloc_sub_arena(1024 * ONE_KB);
+    resource_lookup->image_storage = resource_arena.alloc_sub_arena(10 * ONE_MB);
 }
 
 TextResource
@@ -159,6 +160,98 @@ get_image_resource(const char* key)
     ImageResource dummy = {0};
     dummy.resource_id = RESOURCE_ID_NONE;
     return dummy;
+}
+
+// TODO: This isn't really an animation resource anymore, it's a collection
+// of animations in a single sprite sheet.
+AnimationResource* load_anim_resource(mem::Arena* scratch_arena, const char* file_path)
+{
+    assert(resource_lookup->next_free_anim_id < MAX_ANIM_RESOURCES && "Tried to alloc too many animations");
+
+    TextResource info = load_text_resource(file_path);
+    auto root_v = parse_json_string(scratch_arena, info.text);
+    AnimationResource* resource = resource_lookup->anim_resources + resource_lookup->next_free_anim_id;
+
+    resource->id = resource_lookup->next_free_anim_id;
+    resource_lookup->next_free_anim_id++;
+
+    auto root = root_v->object;
+    auto meta_obj = jsonobj_get(root, "meta", 4)->object;
+    auto animations = jsonobj_get(meta_obj, "frameTags", 9);
+    auto frames = jsonobj_get(root, "frames", 6)->obj_array;
+
+    auto head = animations->obj_array;
+    while (head)
+    {
+        Animation animation;
+
+        auto name = jsonobj_get(head->obj, "name", 4);
+        char* resource_key = reinterpret_cast<char*>(
+            resource_lookup->text_storage.alloc_bytes(name->string->end - name->string->start));
+
+        json_str_copy(animation.name, name->string, 32);
+        json_str_copy(resource_key, name->string);
+
+        animation.start_frame = jsonobj_get(head->obj, "from", 4)->number->value;
+        animation.end_frame = jsonobj_get(head->obj, "to", 2)->number->value + 1; // store half-open
+
+        auto frames_head = frames;
+        i32 n = animation.start_frame;
+        while (n--)
+        {
+            frames_head = frames_head->next;
+        }
+        animation.ms_per_frame = jsonobj_get(frames_head->obj, "duration", 8)->number->value;
+
+        resource->animations.add(resource_key, animation);
+
+        head = head->next;
+    }
+
+    auto frames_head = frames;
+    while (frames_head)
+    {
+        resource->n_frames++;
+        frames_head = frames_head->next;
+    }
+
+    usize key_len = strlen(file_path) + 1;
+    char* resource_key = reinterpret_cast<char*>(resource_lookup->text_storage.alloc_bytes(key_len));
+    usize k;
+    for (k = 0; k < key_len; k++)
+    {
+        resource_key[k] = file_path[k];
+    }
+    resource_key[k] = '\0';
+    resource_lookup->anim_resource_map.add(resource_key, resource->id);
+
+    return resource;
+}
+
+AnimationResource* get_or_load_anim_resource(mem::Arena* scratch_arena, const char* file_path)
+{
+    AnimationResource* check = get_anim_resource(file_path);
+    if (check)
+    {
+        return check;
+    }
+    return load_anim_resource(scratch_arena, file_path);
+}
+
+AnimationResource* get_anim_resource(ResourceId id)
+{
+    assert(id < resource_lookup->next_free_anim_id && "Tried to load oob animation");
+    return resource_lookup->anim_resources + id;
+}
+
+AnimationResource* get_anim_resource(const char* key)
+{
+    auto id = resource_lookup->anim_resource_map.get(key);
+    if (id)
+    {
+        return resource_lookup->anim_resources + *id;
+    }
+    return nullptr;
 }
 
 } // namespace rigel

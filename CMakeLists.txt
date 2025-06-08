@@ -14,8 +14,8 @@ file(GLOB RIGEL_SOURCES "src/*.cpp")
 
 # Compiler options (inherited by sub-folders)
 set(CMAKE_CXX_STANDARD 20)
-# TODO: put this back on please
-#add_compile_options(-Wall -Werror -Wpedantic -Wextra)
+
+#add_compile_options(-Wall -Werror)
 add_compile_options(-fdiagnostics-color)
 
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")

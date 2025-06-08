@@ -31,13 +31,13 @@ operator<<(std::ostream& os, const TileType& tt) -> std::ostream&;
 
 void dump_tile_map(const TileMap* tilemap);
 
-inline usize
+inline isize
 tile_to_index(usize tile_x, usize tile_y)
 {
     return (tile_y * WORLD_WIDTH_TILES) + tile_x;
 }
 
-inline usize
+inline isize
 tile_to_index(m::Vec2 tile_coord)
 {
     return tile_to_index(tile_coord.x, tile_coord.y);

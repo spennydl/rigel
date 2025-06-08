@@ -546,7 +546,7 @@ abs(f32 val)
 inline f32
 floor(f32 val)
 {
-    return (f32)((u32)val);
+    return (f32)((i32)val);
 }
 
 inline Vec2
@@ -610,7 +610,7 @@ dbj2(const char* str, usize len)
     u64 hash = 5381;
     for (usize i = 0; i < len && str[i]; i++)
     {
-        hash = ((hash << 5) + hash) * str[i];
+        hash = ((hash << 5) + hash) + str[i];
     }
     return hash;
 }

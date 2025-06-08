@@ -1,9 +1,36 @@
 #include "entity.h"
+#include "resource.h"
 #include "tilemap.h"
 #include "collider.h"
 #include "rigelmath.h"
 
+#include <cstring>
+
 namespace rigel {
+
+void
+entity_set_animation(Entity* entity, const char* anim_name)
+{
+    auto animations = get_anim_resource(entity->animations_id);
+    auto animation = animations->animations.get(anim_name);
+
+    entity->animation.start_frame = animation->start_frame;
+    entity->animation.current_frame = animation->start_frame;
+    entity->animation.end_frame = animation->end_frame;
+    entity->animation.timer = 0.0f;
+    entity->animation.threshold = animation->ms_per_frame / 1000.0f;
+
+    entity->current_animation = anim_name;
+}
+void
+entity_update_animation(Entity* entity, const char* anim_name)
+{
+    // TODO(spencer) reconsider
+    if (strcmp(entity->current_animation, anim_name) != 0)
+    {
+        entity_set_animation(entity, anim_name);
+    }
+}
 
 AABB
 entity_get_collider(Entity* entity)
@@ -53,7 +80,16 @@ collides_with_level(AABB aabb, TileMap* tile_map)
     {
         for (isize tile_x = tile_min.x; tile_x <= tile_max.x; tile_x++)
         {
-            usize tile_index = tile_to_index(tile_x, tile_y);
+            if (tile_x < 0 ||
+                tile_x >= WORLD_WIDTH_TILES ||
+                tile_y < 0 ||
+                tile_y >= WORLD_HEIGHT_TILES)
+            {
+                continue;
+            }
+
+            isize tile_index = tile_to_index(tile_x, tile_y);
+            assert(tile_index > 0);
             if (tile_index >= WORLD_SIZE_TILES || tile_map->tiles[tile_index] == TileType::EMPTY)
             {
                 continue;
@@ -72,7 +108,8 @@ collides_with_level(AABB aabb, TileMap* tile_map)
     return false;
 }
 
-void
+
+EntityMoveResult
 move_entity(Entity* entity, TileMap* tile_map, f32 dt)
 {
     // we assume now that e->acceleration has been determined for the frame.
@@ -123,10 +160,13 @@ move_entity(Entity* entity, TileMap* tile_map, f32 dt)
     AABB entity_aabb = entity_get_collider(entity);
     bool we_found_one = false;
     bool collided[9] = {0};
+    EntityMoveResult move_result{};
+    move_result.collision_happened = false;
     f32 sqdist_to_dest;
     while (true) // TODO: we should really limit this
     {
-        sqdist_to_dest = F32_INF;
+        m::Vec3 current_displacement = new_pos - entity_pixel_position;
+        sqdist_to_dest = m::dot(current_displacement, current_displacement);
         m::Vec3 best_so_far = entity_pixel_position;
         we_found_one = false;
 
@@ -143,13 +183,21 @@ move_entity(Entity* entity, TileMap* tile_map, f32 dt)
 
                 i32 i = ((2 - (y + 1)) * 3) + (x + 1);
                 collided[i] = collides_with_level(entity_aabb, tile_map);
-                if (test_sqdist <= sqdist_to_dest &&
-                    !collided[i])
+                if (test_sqdist <= sqdist_to_dest)
                 {
-                    sqdist_to_dest = test_sqdist;
-                    best_so_far = test_pixel;
-                    we_found_one = !(x == 0 && y == 0);
+                    if (!collided[i])
+                    {
+                        sqdist_to_dest = test_sqdist;
+                        best_so_far = test_pixel;
+                        we_found_one = !(x == 0 && y == 0);
+                    }
+                    else
+                    {
+                        move_result.collision_happened = true;
+                        // TODO(spencer): bouncing would go here
+                    }
                 }
+                move_result.collided[i] = collided[i];
             }
         }
 
@@ -164,7 +212,6 @@ move_entity(Entity* entity, TileMap* tile_map, f32 dt)
     // check if we can add the fractional part to velocity
     // NOTE: this is sufficient as long as the level colliders are all pixel-aligned.
     // If that ever changes then we will need a more sophisticated refinement step.
-
     entity_aabb.center = new_pos + entity_aabb.extents + dest_fract;
     if (sqdist_to_dest == 0 && !collides_with_level(entity_aabb, tile_map))
     {
@@ -175,6 +222,9 @@ move_entity(Entity* entity, TileMap* tile_map, f32 dt)
         entity->position = new_pos;
     }
 
+    // TODO: Should this be here? It will have to be different if we want to
+    // also support bouncing. Mind you, this whole function will probly hafta
+    // be different. Hmph.
     if (sqdist_to_dest != 0)
     {
         m::Vec3 to_dest = dest_pixel - new_pos;
@@ -190,8 +240,9 @@ move_entity(Entity* entity, TileMap* tile_map, f32 dt)
             new_vel.y = 0;
         }
     }
-   entity->velocity = new_vel;
+    entity->velocity = new_vel;
 
+    return move_result;
 }
 
 }

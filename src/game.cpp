@@ -3,13 +3,87 @@
 #include "resource.h"
 #include "json.h"
 #include "render.h"
+#include "debug.h"
 
 namespace rigel {
 
-EntityPrototype entity_prototypes[EntityType_NumberOfTypes];
-ZoneTriggerAction trigger_action_table[ZoneTriggerActions_NumActions];
 
-void load_entity_prototypes(mem::GameMem& memory, const char* filepath)
+// zonetrigger: does the player overlap with the zone?
+TEST_TRIGGER_FN(ZoneTrigger)
+{
+    auto player = game_state->active_world_chunk->entities + game_state->active_world_chunk->player_id;
+    auto player_aabb = player->colliders->aabbs[0];
+    player_aabb.center = player->position + player_aabb.extents;
+
+    auto zone_aabb = aabb_from_rect(data->rect);
+
+    auto result = simple_AABB_overlap(player_aabb, zone_aabb);
+    return !(result.x == -1 && result.y == -1);
+}
+
+EFFECT_FN(ChangeLevel)
+{
+    Direction* dir = reinterpret_cast<Direction*>(data);
+    switch_world_chunk(*memory, game_state, target_id);
+    auto player = game_state->active_world_chunk->entities + game_state->active_world_chunk->player_id;
+    // TODO: there's gotta be something more robust I could do here
+    switch(*dir)
+    {
+        case Direction_Up:
+        {
+            player->position.y = player->position.y - (WORLD_HEIGHT_TILES * TILE_WIDTH_PIXELS);
+        } break;
+        case Direction_Right:
+        {
+            player->position.x = player->position.x - (WORLD_WIDTH_TILES * TILE_WIDTH_PIXELS);
+        } break;
+        case Direction_Down:
+        {
+            player->position.y = player->position.y + (WORLD_HEIGHT_TILES * TILE_WIDTH_PIXELS);
+        } break;
+        case Direction_Left:
+        {
+            player->position.x = player->position.x + (WORLD_WIDTH_TILES * TILE_WIDTH_PIXELS);
+        } break;
+        default:
+            break;
+    }
+}
+
+EFFECT_FN(SpawnEntity)
+{
+
+}
+
+EntityPrototype entity_prototypes[EntityType_NumberOfTypes];
+
+Direction
+check_for_level_change(Entity* player)
+{
+    auto player_center = player->position + player->colliders->aabbs[0].extents;
+
+    if (player_center.x < 0)
+    {
+        return Direction_Left;
+    }
+    if (player_center.x >= WORLD_WIDTH_TILES * TILE_WIDTH_PIXELS)
+    {
+        return Direction_Right;
+    }
+    if (player_center.y < 0)
+    {
+        return Direction_Down;
+    }
+    if (player_center.y >= WORLD_HEIGHT_TILES * TILE_WIDTH_PIXELS)
+    {
+        return Direction_Up;
+    }
+    return Direction_Stay;
+}
+
+// TODO(spencer): prototypes are a resource
+void
+load_entity_prototypes(mem::GameMem& memory, const char* filepath)
 {
     TextResource entity_protos = load_text_resource(filepath);
     auto root_v = parse_json_string(&memory.scratch_arena, entity_protos.text);
@@ -28,6 +102,18 @@ void load_entity_prototypes(mem::GameMem& memory, const char* filepath)
         auto obj = jsonv->object;
 
         auto entity_proto = entity_prototypes + type;
+
+        char sprite_info_buf[256];
+        auto entity_sprite_info = jsonobj_get(obj, "sprite_info", 11);
+        json_str_copy(sprite_info_buf, entity_sprite_info->string);
+
+        auto checkpoint = memory.scratch_arena.checkpoint();
+        auto arena = memory.scratch_arena.alloc_sub_arena(64 * ONE_PAGE);
+        std::cout << "Loading info from '" << sprite_info_buf << "'" << std::endl;
+        auto anim = get_or_load_anim_resource(&arena, sprite_info_buf);
+
+        memory.scratch_arena.restore_zeroed(checkpoint);
+
         auto entity_sprite = jsonobj_get(obj, "spritesheet", 11);
         json_str_copy(path_buf, entity_sprite->string);
 
@@ -37,12 +123,11 @@ void load_entity_prototypes(mem::GameMem& memory, const char* filepath)
 
         // TODO: should load animations from json exported by aseprite
         auto frames = jsonobj_get(obj, "frames", 6)->number->value;
-        auto resource = get_image_resource(path_buf);
-        if (resource.resource_id != RESOURCE_ID_NONE) {
-            entity_proto->spritesheet = resource;
-        } else {
-            entity_proto->spritesheet = load_image_resource(path_buf, frames);
-        }
+
+        // TOD
+        auto resource = get_or_load_image_resource(path_buf, anim->n_frames);
+        entity_proto->spritesheet = resource;
+        entity_proto->animation_id = anim->id;
         entity_proto->collider_dims = entity_collider;
     }
 }
@@ -68,16 +153,17 @@ void switch_world_chunk(mem::GameMem& mem, GameState* state, i32 index)
     auto active_chunk = state->active_world_chunk;
     auto player = active_chunk->entities + active_chunk->player_id;
 
-    if (next_chunk->player_id == ENTITY_ID_NONE) {
+    if (next_chunk->player_id == ENTITY_ID_NONE)
+    {
         next_chunk->player_id = next_chunk->add_entity(mem, player->type, player->position);
-    } else {
-        auto other_player = next_chunk->entities + next_chunk->player_id;
-        other_player->state_flags = player->state_flags;
-        other_player->position = player->position;
-        other_player->velocity = player->velocity;
-        other_player->acceleration = player->acceleration;
-        other_player->facing_dir = player->facing_dir;
     }
+
+    auto other_player = next_chunk->entities + next_chunk->player_id;
+    other_player->state = player->state;
+    other_player->position = player->position;
+    other_player->velocity = player->velocity;
+    other_player->acceleration = player->acceleration;
+    other_player->facing_dir = player->facing_dir;
 
     state->active_world_chunk = next_chunk;
     render::make_world_chunk_renderable(&mem.scratch_arena, next_chunk);
@@ -96,6 +182,131 @@ load_game(mem::GameMem& memory)
     render::make_world_chunk_renderable(&memory.scratch_arena, result->active_world_chunk);
 
     return result;
+}
+
+// TODO(spencer): will eventually need an overworld map
+int level_index = 0;
+
+void
+simulate_one_tick(mem::GameMem& memory, GameState* game_state, f32 dt)
+{
+    auto world_chunk = game_state->active_world_chunk;
+
+    // TODO: use game_state->player_id
+    auto player = game_state->active_world_chunk->entities + game_state->active_world_chunk->player_id;
+
+    auto dir = check_for_level_change(player);
+    if (dir != Direction_Stay)
+    {
+        level_index = (level_index) ? 0 : 1;
+        auto change_effect = global_effects_map[EffectId_ChangeLevel];
+        change_effect.fn(&memory, game_state, level_index, &dir);
+    }
+
+    auto trigger = world_chunk->zone_triggers + 0;
+
+    if (trigger->id > 0)
+    {
+        debug::push_rect_outline(trigger->rect, {0.0, 1.0, 0.0});
+        if (test_ZoneTrigger(game_state, trigger))
+        {
+        auto effect_map = global_effects_map[trigger->target_effect];
+        effect_map.fn(&memory, game_state, trigger->target_id, trigger->effect_data);
+        }
+    }
+
+    m::Vec3 new_acc = {0};
+
+    f32 gravity = -600; // TODO: grav
+    if (player->state == STATE_ON_LAND) {
+        gravity = 0;
+    }
+    new_acc.y += gravity;
+
+    if (g_input_state.move_left_requested) {
+        new_acc.x -= 450;
+    }
+
+    if (g_input_state.move_right_requested) {
+        new_acc.x += 450;
+    }
+
+    bool is_requesting_move = g_input_state.move_left_requested || g_input_state.move_right_requested;
+    if (m::abs(player->velocity.x) > 0 && !is_requesting_move) {
+        new_acc.x -= m::signof(player->velocity.x) * 600;// * player->velocity.x;
+    }
+
+    if (g_input_state.jump_requested) {
+        if (state_transition_land_to_jump(player))
+        {
+            entity_set_animation(player, "jump");
+        }
+        g_input_state.jump_requested = false;
+        player->velocity.y = 180;
+    }
+
+    TileMap* active_map = game_state->active_world_chunk->active_map;
+    player->acceleration = new_acc;
+
+    auto move_result = move_entity(player, active_map, dt);
+
+    if (player->velocity.y <= 0)
+    {
+        i32 down_row = 2 * 3;
+        i32 down_col = 1;
+        i32 i = down_row + down_col;
+        bool ground_below = move_result.collided[i];
+
+        if (ground_below)
+        {
+            if (state_transition_air_to_land(player))
+            {
+                entity_set_animation(player, "idle");
+            }
+        }
+        else
+        {
+            if (state_transition_fall_exclusive(player))
+            {
+                entity_set_animation(player, "jump");
+            }
+        }
+    }
+
+    if (player->state == STATE_ON_LAND)
+    {
+        if (m::abs(player->velocity.x) > 0.2)
+        {
+            entity_update_animation(player, "walk");
+        }
+        else
+        {
+            entity_update_animation(player, "idle");
+        }
+    }
+
+    update_zero_cross_trigger(&player->facing_dir, player->velocity.x);
+}
+
+void
+update_animations(WorldChunk* active_chunk, f32 dt)
+{
+    for (u32 eid = 0;
+         eid < active_chunk->next_free_entity_idx;
+         eid++)
+    {
+        auto e = active_chunk->entities + eid;
+        e->animation.timer += dt;
+        if (e->animation.timer >= e->animation.threshold)
+        {
+            e->animation.timer = 0;
+            e->animation.current_frame++;
+            if (e->animation.current_frame >= e->animation.end_frame)
+            {
+                e->animation.current_frame = e->animation.start_frame;
+            }
+        }
+    }
 }
 
 } // namespace rigel

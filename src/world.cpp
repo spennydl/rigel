@@ -15,7 +15,7 @@ load_world_chunk(mem::GameMem& mem, const char* file_path)
     for (int i = 0; i < MAX_ENTITIES; i++) {
         result->entity_hash[i].id = ENTITY_ID_NONE;
         result->entities[i].id = ENTITY_ID_NONE;
-        result->entities[i].state_flags = STATE_DELETED;
+        result->entities[i].state = STATE_DELETED;
     }
     result->player_id = ENTITY_ID_NONE;
 
@@ -177,6 +177,8 @@ WorldChunk::add_entity(mem::GameMem& mem,
     new_entity->type = type;
     new_entity->sprite_id = proto.spritesheet.resource_id;
     new_entity->position = initial_position;
+    new_entity->animations_id = proto.animation_id;
+    entity_set_animation(new_entity, "idle");
 
     auto colliders = mem.colliders_arena.alloc_simple<ColliderSet>();
     colliders->n_aabbs = 1;

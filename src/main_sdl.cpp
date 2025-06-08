@@ -58,7 +58,7 @@ mem::GameMem
 initialize_game_memory()
 {
     mem::GameMem memory;
-    memory.game_state_storage_size = 4 * ONE_PAGE;
+    memory.game_state_storage_size = 8 * ONE_PAGE;
     auto gs_ptr = mmap(nullptr,
                        memory.game_state_storage_size,
                        PROT_READ | PROT_WRITE,
@@ -89,7 +89,7 @@ initialize_game_memory()
     memory.stage_arena = memory.ephemeral_arena.alloc_sub_arena(ONE_MB);
     memory.colliders_arena = memory.ephemeral_arena.alloc_sub_arena(1024);
     memory.scratch_arena = memory.ephemeral_arena.alloc_sub_arena(2 * ONE_MB);
-    memory.resource_arena = memory.ephemeral_arena.alloc_sub_arena(8 * ONE_MB);
+    memory.resource_arena = memory.ephemeral_arena.alloc_sub_arena(12 * ONE_MB);
     memory.gfx_arena = memory.ephemeral_arena.alloc_sub_arena(2 * ONE_KB);
     memory.debug_arena = memory.ephemeral_arena.alloc_sub_arena(1 * ONE_MB);
 
@@ -124,11 +124,6 @@ int main()
     int version = gladLoadGL();
     std::cout << "Loaded version " << version << std::endl;
 
-    int tex_units;
-    glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS, &tex_units);
-    std::cout << "can have " << tex_units << " per shader" << std::endl;
-    glGetIntegerv(GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS, &tex_units);
-    std::cout << "can have " << tex_units << " combined" << std::endl;
     mem::GameMem memory = initialize_game_memory();
 
     i32 w, h;
@@ -165,7 +160,6 @@ int main()
     i64 anim_time = 0;
     usize anim_frame = 0;
 
-    int level_index = 0;
 
     while (running) {
         memory.scratch_arena.reinit();
@@ -196,35 +190,28 @@ int main()
                             break;
                         }
 
-                    }
-
-                    break;
+                    } break;
                 }
-                case SDL_EVENT_KEY_UP: {
+                case SDL_EVENT_KEY_UP:
+                {
                     SDL_KeyboardEvent key_event = event.key;
-                    switch (key_event.scancode) {
-                        case SDL_SCANCODE_W: {
+                    switch (key_event.scancode)
+                    {
+                        case SDL_SCANCODE_W:
+                        {
                             // TODO: this isn't gonna work.
                             g_input_state.jump_requested = false;
-                            break;
-                        }
-                        case SDL_SCANCODE_A: {
+                        } break;
+                        case SDL_SCANCODE_A:
+                        {
                             g_input_state.move_left_requested = false;
-                            break;
-                        }
-                        case SDL_SCANCODE_D: {
+                        } break;
+                        case SDL_SCANCODE_D:
+                        {
                             g_input_state.move_right_requested = false;
-                            break;
-                        }
-                        case SDL_SCANCODE_T: {
-                            level_index = (level_index) ? 0 : 1;
-                            switch_world_chunk(memory, game_state, level_index);
-                        }
-
+                        } break;
                     }
-
-                    break;
-                }
+                } break;
                 default:
                     break;
             }
@@ -251,75 +238,10 @@ int main()
 #endif
             while (delta_update_time > 0) {
                 f32 dt = delta_update_time / 1000000000.0f; // to seconds
-                //std::cout << dt << std::endl;
 
-                // TODO: use game_state->player_id
-                Entity* player = game_state->active_world_chunk->entities;
+                simulate_one_tick(memory, game_state, dt);
 
-                m::Vec3 new_acc = {0};
-
-                f32 gravity = -600; // TODO: grav
-                if (player->state_flags & STATE_ON_LAND) {
-                    gravity = 0;
-                }
-                new_acc.y += gravity;
-
-                if (g_input_state.move_left_requested) {
-                    new_acc.x -= 450;
-                }
-
-                if (g_input_state.move_right_requested) {
-                    new_acc.x += 450;
-                }
-
-                bool is_requesting_move = g_input_state.move_left_requested || g_input_state.move_right_requested;
-                if (m::abs(player->velocity.x) > 0 && !is_requesting_move) {
-                    new_acc.x -= m::signof(player->velocity.x) * 600;// * player->velocity.x;
-                }
-
-                if (g_input_state.jump_requested) {
-                    state_transition_land_to_jump(player);
-                    g_input_state.jump_requested = false;
-                    player->velocity.y = 180;
-                }
-
-                TileMap* active_map = game_state->active_world_chunk->active_map;
-                player->acceleration = new_acc;
-
-                move_entity(player, active_map, dt);
-
-                if (player->velocity.y <= 0)
-                {
-                    AABB player_aabb = player->colliders->aabbs[0];
-                    player_aabb.center = player->position + player_aabb.extents;
-                    player_aabb.center.y = player_aabb.center.y - 1;
-                    if (collides_with_level(player_aabb, active_map))
-                    {
-                        state_transition_air_to_land(player);
-                    }
-                    else
-                    {
-                        state_transition_land_to_fall(player);
-                    }
-                }
-
-                // TODO: This has gotta go somewhere better
-                if ((player->state_flags & STATE_ON_LAND) == 0) {
-                    anim_frame = 1;
-                } else if (abs(player->acceleration.x) > 0.1) {
-                    anim_time += delta_update_time;
-                    if (anim_time > 120000000) {
-                        anim_frame++;
-                        anim_time = 0;
-                    }
-                    if (anim_frame >= 5) {
-                        anim_frame = 1;
-                    }
-                } else {
-                    anim_frame = 0;
-                    anim_time = 0;
-                }
-                update_zero_cross_trigger(&player->facing_dir, player->velocity.x);
+                update_animations(game_state->active_world_chunk, dt);
 
                 delta_update_time -= UPDATE_TIME_NS;
             }
@@ -340,7 +262,8 @@ int main()
 
             render::render_background_layer(viewport, world_chunk);
 
-            render::render_all_entities(viewport, world_chunk, anim_frame);
+            // TODO: anim frame? really? that needs to go onto an enitty somewhere
+            render::render_all_entities(viewport, world_chunk);
 
             render::render_foreground_layer(viewport, world_chunk);
             render::render_decoration_layer(viewport, world_chunk);

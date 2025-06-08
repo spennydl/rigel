@@ -8,6 +8,7 @@
 #include "tilemap.h"
 #include "resource.h"
 #include "rigelmath.h"
+#include "trigger.h"
 
 #include <iostream>
 
@@ -41,21 +42,6 @@ struct Light
     m::Vec3 color;
 };
 
-struct GameState;
-struct ZoneTrigger;
-typedef void (*ZoneTriggerAction)(ZoneTrigger* zone, GameState* game_state);
-
-struct ZoneTrigger
-{
-    i32 id;
-    Rectangle rect;
-    ZoneTriggerAction action;
-
-    union {
-        i64 data;
-        Entity* entity;
-    };
-};
 
 struct WorldChunk
 {
@@ -69,8 +55,7 @@ struct WorldChunk
 
     Light lights[24];
 
-    ZoneTrigger zone_triggers[16];
-
+    ZoneTriggerData zone_triggers[16];
 
     // REVIEW
     EntityId add_entity(mem::GameMem& mem,

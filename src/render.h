@@ -217,7 +217,7 @@ void render_foreground_layer(Viewport& viewport, WorldChunk* world_chunk);
 void render_background_layer(Viewport& viewport, WorldChunk* world_chunk);
 void render_decoration_layer(Viewport& viewport, WorldChunk* world_chunk);
 void make_shadow_map_for_point_light(mem::Arena* scratch_arena, TileMap* tile_map, m::Vec3 light_pos, i32 light_idx);
-void render_all_entities(Viewport& viewport, WorldChunk* world_chunk, usize temp_anim_frame);
+void render_all_entities(Viewport& viewport, WorldChunk* world_chunk);
 
 void begin_render_to_internal_target();
 void begin_render_to_target(RenderTarget target);

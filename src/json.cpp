@@ -325,7 +325,7 @@ JsonValue* jsonobj__create_mapping(JsonObj* obj, JsonString key)
         // something is there
         while (entry->key.start)
         {
-            index = (++index) & (N_HASHES - 1);
+            index = (index + 1) & (N_HASHES - 1);
             entry = obj->entries + index;
         }
     }
@@ -348,7 +348,7 @@ void jsonobj__add(JsonObj* obj, JsonString key, JsonValue value)
         // something is there
         while (entry->key.start)
         {
-            index = (++index) & (N_HASHES - 1);
+            index = (index + 1) & (N_HASHES - 1);
             entry = obj->entries + index;
         }
     }
@@ -372,7 +372,7 @@ JsonValue* jsonobj_get(JsonObj* obj, const char* key, usize key_len)
 
     while (true)
     {
-        index = (++index) & (N_HASHES - 1);
+        index = (index + 1) & (N_HASHES - 1);
         entry = obj->entries + index;
         if (entry->key.start)
         {

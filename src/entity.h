@@ -12,7 +12,10 @@
 
 namespace rigel {
 
-enum EntityStateFlag
+#define ANIMATION_IDLE "idle"
+#define ANIMATION_WALK "walk"
+
+enum EntityState
 {
     // movement
     STATE_ON_LAND = 0x1,
@@ -66,65 +69,97 @@ get_entity_type_for_str(const char* type)
     }
 }
 
+struct PlayingAnimation
+{
+    usize start_frame;
+    usize end_frame;
+    usize current_frame;
+    // TODO: proper timers!
+    f32 timer;
+    f32 threshold;
+};
 
 struct Entity
 {
     EntityId id;
     EntityType type;
-    SpriteResourceId sprite_id;
+    ResourceId sprite_id;
 
-    u32 state_flags;
+    // sooo we have these state flags which means that an
+    // entity can be in more than one state at a time. I think
+    // this was initialially done because jumping and falling
+    // are technically co-incident. Buuuuut I am now thinking
+    // that this is silly.
+    EntityState state;
 
     m::Vec3 position;
     m::Vec3 velocity;
     m::Vec3 acceleration;
 
     ZeroCrossTrigger facing_dir;
+    ResourceId animations_id;
+    const char* current_animation;
+    PlayingAnimation animation;
 
     // TODO: this should just be a rectangle. No multiple colliders.
     ColliderSet* colliders;
 };
 
-void
+struct EntityMoveResult
+{
+    bool collision_happened;
+    bool collided[9];
+};
+
+EntityMoveResult
 move_entity(Entity* entity, TileMap* tile_map, f32 dt);
 bool
 collides_with_level(AABB aabb, TileMap* tile_map);
+void
+entity_set_animation(Entity* entity, const char* anim_name);
+void
+entity_update_animation(Entity* entity, const char* anim_name);
 
-inline void state_transition_air_to_land(Entity* e)
+inline bool state_transition_air_to_land(Entity* e)
 {
-    u32 flags = e->state_flags;
-    flags &= ~(STATE_JUMPING | STATE_FALLING);
-    flags |= STATE_ON_LAND;
-    e->state_flags = flags;
+    if (e->state == STATE_JUMPING || e->state == STATE_FALLING)
+    {
+        e->state = STATE_ON_LAND;
+        return true;
+    }
+    return false;
 }
 
-inline void state_transition_land_to_jump(Entity* e)
+inline bool state_transition_land_to_jump(Entity* e)
 {
-    u32 flags = e->state_flags;
-    flags &= ~(STATE_ON_LAND);
-    flags |= STATE_JUMPING;
-    e->state_flags = flags;
+    if (e->state == STATE_ON_LAND)
+    {
+        e->state = STATE_JUMPING;
+        return true;
+    }
+    return false;
 }
 
-inline void state_transition_land_to_fall(Entity* e)
+inline bool state_transition_land_to_fall(Entity* e)
 {
-    u32 flags = e->state_flags;
-    flags &= ~(STATE_ON_LAND);
-    flags |= STATE_FALLING;
-    e->state_flags = flags;
+    if (e->state == STATE_ON_LAND)
+    {
+        e->state = STATE_FALLING;
+        return true;
+    }
+    return false;
 }
 
-inline void state_transition_fall_exclusive(Entity* e)
+inline bool state_transition_fall_exclusive(Entity* e)
 {
-    u32 flags = e->state_flags;
-    flags &= ~(STATE_ON_LAND | STATE_JUMPING);
-    flags |= STATE_FALLING;
-    e->state_flags = flags;
+    e->state = STATE_FALLING;
+    return true;
 }
 
 struct EntityPrototype
 {
     ImageResource spritesheet;
+    ResourceId animation_id;
     Rectangle collider_dims;
 };
 

@@ -53,7 +53,8 @@
   "size": { "w": 16, "h": 100 },
   "scale": "1",
   "frameTags": [
-   { "name": "stand", "from": 0, "to": 0, "direction": "forward", "color": "#000000ff" },
+   { "name": "idle", "from": 0, "to": 0, "direction": "forward", "color": "#000000ff" },
+   { "name": "jump", "from": 1, "to": 1, "direction": "forward", "color": "#000000ff" },
    { "name": "walk", "from": 1, "to": 4, "direction": "forward", "color": "#000000ff" }
   ],
   "layers": [
