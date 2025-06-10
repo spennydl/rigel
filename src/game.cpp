@@ -48,6 +48,8 @@ EFFECT_FN(ChangeLevel)
         default:
             break;
     }
+    if (player->position.x < 0)
+        player->position.x = 0;
 }
 
 EFFECT_FN(SpawnEntity)
@@ -147,6 +149,7 @@ WorldChunk* load_all_world_chunks(mem::GameMem& memory)
     return starting_chunk;
 }
 
+// TODO(spencer): This is half-baked.
 void switch_world_chunk(mem::GameMem& mem, GameState* state, i32 index)
 {
     auto next_chunk = state->first_world_chunk + index;
@@ -215,77 +218,173 @@ simulate_one_tick(mem::GameMem& memory, GameState* game_state, f32 dt)
         }
     }
 
-    m::Vec3 new_acc = {0};
-
-    f32 gravity = -600; // TODO: grav
-    if (player->state == STATE_ON_LAND) {
-        gravity = 0;
-    }
-    new_acc.y += gravity;
-
-    if (g_input_state.move_left_requested) {
-        new_acc.x -= 450;
-    }
-
-    if (g_input_state.move_right_requested) {
-        new_acc.x += 450;
-    }
-
-    bool is_requesting_move = g_input_state.move_left_requested || g_input_state.move_right_requested;
-    if (m::abs(player->velocity.x) > 0 && !is_requesting_move) {
-        new_acc.x -= m::signof(player->velocity.x) * 600;// * player->velocity.x;
-    }
-
-    if (g_input_state.jump_requested) {
-        if (state_transition_land_to_jump(player))
-        {
-            entity_set_animation(player, "jump");
-        }
-        g_input_state.jump_requested = false;
-        player->velocity.y = 180;
-    }
+    EntityIterator entity_iter(world_chunk);
 
     TileMap* active_map = game_state->active_world_chunk->active_map;
-    player->acceleration = new_acc;
 
-    auto move_result = move_entity(player, active_map, dt);
-
-    if (player->velocity.y <= 0)
+    for (auto entity = entity_iter.begin();
+         entity != entity_iter.end();
+         entity = entity_iter.next())
     {
-        i32 down_row = 2 * 3;
-        i32 down_col = 1;
-        i32 i = down_row + down_col;
-        bool ground_below = move_result.collided[i];
+        // TODO(spencer): entity type? Or do we want concepts of controllers/brains that we can
+        // attach to an entity? That sounds kinda nice, tbh.
+        switch (entity->type)
+        {
+            case EntityType_Player:
+            {
+                m::Vec3 new_acc = {0};
 
-        if (ground_below)
-        {
-            if (state_transition_air_to_land(player))
+                f32 gravity = -600; // TODO: grav
+                if (entity->state == STATE_ON_LAND)
+                {
+                    gravity = 0;
+                }
+                new_acc.y += gravity;
+
+                if (g_input_state.move_left_requested)
+                {
+                    new_acc.x -= (entity->velocity.x > 0) ? 600 : 450;
+                }
+
+                if (g_input_state.move_right_requested)
+                {
+                    new_acc.x += (entity->velocity.x < 0) ? 600 : 450;
+                }
+
+                bool is_requesting_move = g_input_state.move_left_requested || g_input_state.move_right_requested;
+                if (m::abs(entity->velocity.x) > 0 && !is_requesting_move)
+                {
+                    new_acc.x -= m::signof(entity->velocity.x) * 600;
+
+                    if (m::abs(new_acc.x * dt) > m::abs(entity->velocity.x))
+                    {
+                        new_acc.x = 0;
+                        entity->velocity.x = 0;
+                    }
+                }
+
+                if (g_input_state.jump_requested)
+                {
+                    if (state_transition_land_to_jump(entity))
+                    {
+                        entity_set_animation(entity, "jump");
+                    }
+                    g_input_state.jump_requested = false;
+                    entity->velocity.y = 180;
+                }
+
+                entity->acceleration = new_acc;
+
+                auto move_result = move_entity(entity, active_map, dt, 100);
+
+                if (entity->velocity.y <= 0)
+                {
+                    i32 down_row = 2 * 3;
+                    i32 down_col = 1;
+                    i32 i = down_row + down_col;
+                    bool ground_below = move_result.collided[i];
+
+                    if (ground_below)
+                    {
+                        if (state_transition_air_to_land(entity))
+                        {
+                            entity_set_animation(entity, "idle");
+                        }
+                    }
+                    else
+                    {
+                        if (state_transition_fall_exclusive(entity))
+                        {
+                            entity_set_animation(entity, "jump");
+                        }
+                    }
+                }
+
+                if (entity->state == STATE_ON_LAND)
+                {
+                    if (m::abs(entity->velocity.x) > 0.3) // ????
+                    {
+                        entity_update_animation(entity, "walk");
+                    }
+                    else
+                    {
+                        entity_update_animation(entity, "idle");
+                    }
+                }
+
+                update_zero_cross_trigger(&entity->facing_dir, entity->velocity.x);
+            } break;
+            case EntityType_Bumpngo:
             {
-                entity_set_animation(player, "idle");
-            }
-        }
-        else
-        {
-            if (state_transition_fall_exclusive(player))
+                m::Vec3 new_accel;
+                f32 grav = -600;
+                if (entity->state == STATE_ON_LAND)
+                {
+                    grav = 0;
+                }
+                new_accel.y = grav;
+                auto dir = entity->facing_dir.last_observed_sign;
+                if (dir == 0)
+                {
+                    dir = 1;
+                }
+
+                // accelerate effectively instantly
+                new_accel.x = 1500 * dir;
+
+                entity->acceleration = new_accel;
+                auto move_result = move_entity(entity, active_map, dt, 20);
+
+                if (entity->velocity.y <= 0)
+                {
+                    i32 down_row = 2 * 3;
+                    i32 down_col = 1;
+                    i32 i = down_row + down_col;
+                    bool ground_below = move_result.collided[i];
+
+                    if (ground_below)
+                    {
+                        if (state_transition_air_to_land(entity))
+                        {
+                            entity_set_animation(entity, "idle");
+                        }
+                    }
+                    else
+                    {
+                        if (state_transition_fall_exclusive(entity))
+                        {
+                            entity_set_animation(entity, "jump");
+                        }
+                    }
+                }
+                if (entity->state == STATE_ON_LAND)
+                {
+                    if (m::abs(entity->velocity.x) > 0.2)
+                    {
+                        entity_update_animation(entity, "walk");
+                    }
+                    else
+                    {
+                        entity_update_animation(entity, "idle");
+                    }
+                }
+
+                i32 leftright = 4 + dir;
+                if (move_result.collided[leftright])
+                {
+                    update_zero_cross_trigger(&entity->facing_dir, -dir);
+                    entity->velocity.x = 0;
+                }
+
+            } break;
+            default:
             {
-                entity_set_animation(player, "jump");
-            }
+            } break;
+
         }
+
     }
 
-    if (player->state == STATE_ON_LAND)
-    {
-        if (m::abs(player->velocity.x) > 0.2)
-        {
-            entity_update_animation(player, "walk");
-        }
-        else
-        {
-            entity_update_animation(player, "idle");
-        }
-    }
-
-    update_zero_cross_trigger(&player->facing_dir, player->velocity.x);
 }
 
 void

@@ -25,7 +25,6 @@ entity_set_animation(Entity* entity, const char* anim_name)
 void
 entity_update_animation(Entity* entity, const char* anim_name)
 {
-    // TODO(spencer) reconsider
     if (strcmp(entity->current_animation, anim_name) != 0)
     {
         entity_set_animation(entity, anim_name);
@@ -110,7 +109,7 @@ collides_with_level(AABB aabb, TileMap* tile_map)
 
 
 EntityMoveResult
-move_entity(Entity* entity, TileMap* tile_map, f32 dt)
+move_entity(Entity* entity, TileMap* tile_map, f32 dt, f32 top_speed)
 {
     // we assume now that e->acceleration has been determined for the frame.
     f32 dt2 = dt*dt;
@@ -127,19 +126,9 @@ move_entity(Entity* entity, TileMap* tile_map, f32 dt)
     //std::cout << "a " << entity->acceleration.x << "," << entity->acceleration.y << std::endl;
     m::Vec3 new_vel = entity->velocity + (entity->acceleration * dt);
 
-    bool is_requesting_move = g_input_state.move_left_requested || g_input_state.move_right_requested;
-    if (!is_requesting_move)
+    if (m::abs(new_vel.x) > top_speed)
     {
-        // at slow update speeds we can sometimes overshoot 0
-        if (m::signof(new_vel.x) != m::signof(entity->velocity.x)) {
-            new_vel.x = 0;
-        }
-    }
-
-    // TODO: should put all the constants in one place somewhere
-    if (m::abs(new_vel.x) > 120)
-    {
-        new_vel.x = 120 * m::signof(new_vel.x);
+        new_vel.x = top_speed * m::signof(new_vel.x);
     }
 
     if (m::abs(new_vel.x) < 0.0125)
@@ -149,13 +138,12 @@ move_entity(Entity* entity, TileMap* tile_map, f32 dt)
 
     CollisionResult min_collision_result;
 
-
     m::Vec3 dest_pixel = new_pos;
     dest_pixel.x = floorf(dest_pixel.x);
     dest_pixel.y = floorf(dest_pixel.y);
     m::Vec3 dest_fract = m::fract(new_pos);
 
-    m::Vec3 entity_pixel_position = m::floor(entity->position);
+    m::Vec3 entity_pixel_position = m::floor(entity->position);// + m::Vec3{0.5f, 0.5f, 0.0f};
 
     AABB entity_aabb = entity_get_collider(entity);
     bool we_found_one = false;
@@ -163,9 +151,10 @@ move_entity(Entity* entity, TileMap* tile_map, f32 dt)
     EntityMoveResult move_result{};
     move_result.collision_happened = false;
     f32 sqdist_to_dest;
+
     while (true) // TODO: we should really limit this
     {
-        m::Vec3 current_displacement = new_pos - entity_pixel_position;
+        m::Vec3 current_displacement = new_pos - (entity_pixel_position + m::Vec3{0.5f, 0.5f, 0.0f});
         sqdist_to_dest = m::dot(current_displacement, current_displacement);
         m::Vec3 best_so_far = entity_pixel_position;
         we_found_one = false;
@@ -175,20 +164,24 @@ move_entity(Entity* entity, TileMap* tile_map, f32 dt)
             for (i32 x = -1; x < 2; x++)
             {
                 m::Vec3 offset {(f32)x, (f32)y, 0.0f};
-                m::Vec3 test_pixel = entity_pixel_position + offset;
-                entity_aabb.center = test_pixel + entity_aabb.extents;
+                m::Vec3 test_center = entity_pixel_position + offset;
 
-                m::Vec3 test_displacement = new_pos - test_pixel;
+                entity_aabb.center = test_center + entity_aabb.extents;
+
+                m::Vec3 test_displacement = new_pos - test_center;
                 f32 test_sqdist = m::dot(test_displacement, test_displacement);
 
                 i32 i = ((2 - (y + 1)) * 3) + (x + 1);
                 collided[i] = collides_with_level(entity_aabb, tile_map);
-                if (test_sqdist <= sqdist_to_dest)
+
+                bool contains_dest = test_center.x == dest_pixel.x && test_center.y == dest_pixel.y;
+
+                if (contains_dest || test_sqdist <= sqdist_to_dest)
                 {
                     if (!collided[i])
                     {
-                        sqdist_to_dest = test_sqdist;
-                        best_so_far = test_pixel;
+                        sqdist_to_dest = contains_dest ? 0 : test_sqdist;
+                        best_so_far = test_center;
                         we_found_one = !(x == 0 && y == 0);
                     }
                     else
@@ -212,7 +205,22 @@ move_entity(Entity* entity, TileMap* tile_map, f32 dt)
     // check if we can add the fractional part to velocity
     // NOTE: this is sufficient as long as the level colliders are all pixel-aligned.
     // If that ever changes then we will need a more sophisticated refinement step.
+    new_pos = m::floor(new_pos);
+    i32 x_check = new_vel.x > 0 ? 5 : 3;
+    i32 y_check = new_vel.y > 0 ? 1 : 7;
+    if (collided[x_check])
+    {
+        dest_fract.x = 0;
+        new_vel.x = 0;
+    }
+    if (collided[y_check])
+    {
+        dest_fract.y = 0;
+        new_vel.y = 0;
+    }
+
     entity_aabb.center = new_pos + entity_aabb.extents + dest_fract;
+
     if (sqdist_to_dest == 0 && !collides_with_level(entity_aabb, tile_map))
     {
         entity->position = new_pos + dest_fract;
@@ -222,15 +230,11 @@ move_entity(Entity* entity, TileMap* tile_map, f32 dt)
         entity->position = new_pos;
     }
 
-    // TODO: Should this be here? It will have to be different if we want to
-    // also support bouncing. Mind you, this whole function will probly hafta
-    // be different. Hmph.
     if (sqdist_to_dest != 0)
     {
         m::Vec3 to_dest = dest_pixel - new_pos;
         i32 x_idx = (to_dest.x > 0) ? 5 : 3;
         i32 y_idx = (to_dest.y > 0) ? 1 : 7;
-
 
         if (to_dest.x != 0 && collided[x_idx]) {
             //std::cout << "collided x" << std::endl;

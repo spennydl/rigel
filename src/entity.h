@@ -112,7 +112,7 @@ struct EntityMoveResult
 };
 
 EntityMoveResult
-move_entity(Entity* entity, TileMap* tile_map, f32 dt);
+move_entity(Entity* entity, TileMap* tile_map, f32 dt, f32 top_speed = 120);
 bool
 collides_with_level(AABB aabb, TileMap* tile_map);
 void

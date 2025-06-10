@@ -180,6 +180,7 @@ WorldChunk::add_entity(mem::GameMem& mem,
     new_entity->animations_id = proto.animation_id;
     entity_set_animation(new_entity, "idle");
 
+    // TODO: This is a thorn in my side
     auto colliders = mem.colliders_arena.alloc_simple<ColliderSet>();
     colliders->n_aabbs = 1;
     colliders->aabbs = mem.colliders_arena.alloc_array<AABB>(1);

@@ -42,7 +42,6 @@ struct Light
     m::Vec3 color;
 };
 
-
 struct WorldChunk
 {
     i32 level_index;
@@ -61,10 +60,55 @@ struct WorldChunk
     EntityId add_entity(mem::GameMem& mem,
                         EntityType type,
                         m::Vec3 initial_position);
+
+};
+
+struct EntityIterator
+{
+    EntityIterator(WorldChunk* wc)
+    {
+        first = wc->entities;
+        current = first;
+        last = wc->entities + wc->next_free_entity_idx;
+    }
+
+    Entity* begin()
+    {
+        return current;
+    }
+
+    Entity* end()
+    {
+        return last;
+    }
+
+    Entity* next()
+    {
+        current++;
+        while (current < last && first->state == STATE_DELETED)
+        {
+            current++;
+        }
+        return current;
+    }
+
+    Entity* first;
+    Entity* current;
+    Entity* last;
 };
 
 WorldChunk*
 load_world_chunk(mem::GameMem& mem, const char* file_path);
+
+inline Entity*
+get_player(WorldChunk* wc)
+{
+    if (wc->player_id != ENTITY_ID_NONE)
+    {
+        return wc->entities + wc->player_id;
+    }
+    return nullptr;
+}
 
 
 } // namespace rigel
