@@ -14,38 +14,6 @@
 #include <iostream>
 #include <sys/mman.h>
 
-/*
-
- TODO:
-
- Things are looking much better in here.
-
- Threads to pull on:
- - level loading needs work. i think it's time to rip out tinyxml and say thanks for your service.
-   - load lights and zones from json
-   - create the concept of trigger zones, load from json
-   - hot-reloading
-   - use trigger zones to switch between levels
- - text rendering!
- - lighting
-   - store lights in the world chunk and render them from there
-   - create a circle light type
-   - we need a notion of entity attachments so we can attach lights to entities
- - pull player behavior out into a more final place. Was thinking a brain sorta abstraction,
-   but I dunno.
- - controller input
-
-Done:
- - start laying in lighting.
- - we need a proper math lib. if we could get rid of glm i'd be super happy too. This may
-   be a good task for a slow day.
- - there is work to do on collision, but collision is a bloody pit.
- - Switch to loading from json and rip out tinyxml2
- - load entities from json exported from tiles
- - debug line rendering
-
-*/
-
 namespace rigel {
 
 InputState g_input_state;
