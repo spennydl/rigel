@@ -6,6 +6,7 @@ and gameplay/content creation work to ramp up relatively soon.
 
 Here are a few screenshots of the current state of the game:
 
+![A screen shot of the Rigel game](/resource/screenshot3.png)
 ![A screen shot of the Rigel game](/resource/screenshot1.png)
 ![A screen shot of the Rigel game](/resource/screenshot2.png)
 
