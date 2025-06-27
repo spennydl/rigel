@@ -7,6 +7,25 @@
 
 namespace rigel {
 
+m::Vec3
+parse_color_str(const char* str)
+{
+    assert(str[0] == '#' && "malformed color");
+    str = str + 1;
+    u32 mask = 0x000000FF;
+
+    u32 val = strtol(str, nullptr, 16);
+
+    m::Vec3 result;
+    for (i32 i = 2; i >= 0; i--)
+    {
+        result.xyz[i] = (float)(val & mask) / 255.0f;
+        val >>= 8;
+    }
+
+    return result;
+}
+
 WorldChunk*
 load_world_chunk(mem::GameMem& mem, const char* file_path)
 {
@@ -31,7 +50,7 @@ load_world_chunk(mem::GameMem& mem, const char* file_path)
     TileMap* decoration = tilemap_arena.alloc_simple<TileMap>();
     TileMap* background = tilemap_arena.alloc_simple<TileMap>();
 
-    ImageResource tilesheet = get_or_load_image_resource("resource/image/tranquil_tunnels_transparent.png");
+    ImageResource tilesheet = get_or_load_image_resource("resource/image/tiles_merged.png");
     tile_map->tile_sheet = tilesheet.resource_id;
     decoration->tile_sheet = tilesheet.resource_id;
     background->tile_sheet = tilesheet.resource_id;
@@ -144,6 +163,64 @@ load_world_chunk(mem::GameMem& mem, const char* file_path)
 
             entities = true;
         } else if (json_str_equals(*name, "lights", 6)) {
+            auto objects_v = jsonobj_get(obj, "objects", 7);
+            if (objects_v->type != JSON_OBJECT_ARRAY) {
+                head = head->next;
+                continue;
+            }
+            auto objects = objects_v->obj_array;
+
+            while(objects)
+            {
+                auto obj = objects->obj;
+                auto props = jsonobj_get(obj, "properties", 10)->obj_array;
+
+                LightType light_type = LightType_NLightTypes;
+                m::Vec3 color{0, 0, 0};
+                float intensity = -1;
+
+                while (props)
+                {
+                    auto prop = props->obj;
+
+                    auto name = jsonobj_get(prop, "name", 4)->string;
+                    if (json_str_equals(*name, "LightType", 9))
+                    {
+                        char buf[64];
+                        auto type_s = jsonobj_get(prop, "value", 5)->string;
+                        json_str_copy(buf, type_s);
+                        light_type = get_light_type_for_str(buf);
+                    }
+                    else if (json_str_equals(*name, "Color", 5))
+                    {
+                        char buf[32];
+                        auto color_s = jsonobj_get(prop, "value", 5)->string;
+                        json_str_copy(buf, color_s);
+                        color = parse_color_str(buf);
+                    }
+                    else if (json_str_equals(*name, "Intensity", 9))
+                    {
+                        intensity = jsonobj_get(prop, "value", 5)->number->value;
+                    }
+                    props = props->next;
+                }
+                f32 x_pos = jsonobj_get(obj, "x", 1)->number->value;
+                f32 y_pos = jsonobj_get(obj, "y", 1)->number->value;
+                y_pos = (WORLD_HEIGHT_TILES * TILE_WIDTH_PIXELS) - y_pos;
+
+                if(light_type != LightType_NLightTypes
+                            && color != m::Vec3{0, 0, 0}
+                            && intensity > 0)
+                {
+                    color = color * intensity;
+                    result->add_light(light_type, m::Vec3{x_pos, y_pos, 0}, color);
+                }
+                else
+                {
+                    std::cout << "skipping light with not enough props..." << std::endl;
+                }
+                objects = objects->next;
+            }
             lights = true;
         } else {
             assert(false && "Found an unexpected layer");
@@ -155,6 +232,20 @@ load_world_chunk(mem::GameMem& mem, const char* file_path)
     assert((fg && bg && dec && entities && lights) && "missing a layer");
 
     return result;
+}
+
+u32 WorldChunk::add_light(LightType type, m::Vec3 position, m::Vec3 color)
+{
+    auto idx = next_free_light_idx;
+    assert(idx < 24 && "too many lights!");
+    next_free_light_idx++;
+
+    auto light = lights + idx;
+    light->type = type;
+    light->position = position;
+    light->color = color;
+
+    return idx;
 }
 
 EntityId

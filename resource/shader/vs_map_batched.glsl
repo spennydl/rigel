@@ -15,6 +15,7 @@ layout (std140) uniform GlobalUniforms {
     mat4 screen;
     Light point_lights[24];
     Light circle_lights[24];
+    vec4 n_lights;
 };
 
 out vec2 tex_coord;

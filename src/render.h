@@ -21,8 +21,10 @@ const f32 RENDER_INTERNAL_HEIGHT = 180.0;
 const f32 RENDER_SCREEN_WIDTH = 1280.0;
 const f32 RENDER_SCREEN_HEIGHT = 720.0;
 
-const f32 QUAD_VERTS[] = { 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0,
-                       1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 0.0 };
+const f32 QUAD_VERTS[] = { 0.0, 0.0, 0.0, 0.0, 1.0,
+                           0.0, 1.0, 0.0, 0.0, 0.0,
+                           1.0, 0.0, 0.0, 1.0, 1.0,
+                           1.0, 1.0, 0.0, 1.0, 0.0 };
 
 const u32 QUAD_IDXS[] = { 0, 1, 2, 1, 2, 3 };
 
@@ -71,14 +73,34 @@ check_shader_status(GLuint id, bool prog = false);
 
 void draw_rectangle(Rectangle rect, f32 r, f32 g, f32 b);
 
+struct TextureConfig
+{
+    u32 width;
+    u32 height;
+    u32 wrap_s;
+    u32 wrap_t;
+    u32 min_filter;
+    u32 mag_filter;
+    u32 internal_format;
+    u32 src_format;
+    u32 src_data_type;
+    void* data;
+
+    TextureConfig()
+        : width(0), height(0),
+            wrap_s(GL_REPEAT), wrap_t(GL_REPEAT),
+            min_filter(GL_NEAREST), mag_filter(GL_NEAREST),
+            internal_format(GL_SRGB_ALPHA), src_format(GL_RGBA),
+            src_data_type(GL_UNSIGNED_BYTE), data(nullptr)
+    {}
+};
+
 struct Texture
 {
     GLuint id;
     SpriteResourceId ready_idx;
 };
-Texture alloc_texture(int w, int h);
-Texture make_texture(int w, int h, ubyte* data);
-Texture make_texture(ImageResource image);
+Texture make_texture(TextureConfig config);
 Texture make_array_texture_from_vstrip(ImageResource image, usize n_images);
 
 struct Quad
@@ -196,6 +218,7 @@ struct GlobalUniforms
     m::Mat4 screen_transform;
     UniformLight point_lights[24];
     UniformLight circle_lights[24];
+    m::Vec4 n_lights;
 };
 
 enum GameShaders {
@@ -203,6 +226,7 @@ enum GameShaders {
     TILEMAP_DRAW_SHADER,
     ENTITY_DRAW_SHADER,
     TILE_OCCLUDER_SHADER,
+    BACKGROUND_GRADIENT_SHADER,
 #ifdef RIGEL_DEBUG
     DEBUG_LINE_SHADER,
 #endif
@@ -213,6 +237,7 @@ void initialize_renderer(mem::Arena* gfx_arena, f32 fb_width, f32 fb_height);
 
 void begin_render(Viewport& vp, GameState* game_state, f32 fb_width, f32 fb_height);
 void lighting_pass(mem::Arena* scratch_arena, TileMap* tile_map);
+void render_background();
 void render_foreground_layer(Viewport& viewport, WorldChunk* world_chunk);
 void render_background_layer(Viewport& viewport, WorldChunk* world_chunk);
 void render_decoration_layer(Viewport& viewport, WorldChunk* world_chunk);

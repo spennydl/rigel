@@ -408,6 +408,12 @@ operator/(const Vec3& lhs, const f32& rhs)
     return Vec3 { lhs.x / rhs, lhs.y / rhs, lhs.z / rhs};
 }
 
+inline bool
+operator==(const Vec3& lhs, const Vec3& rhs)
+{
+    return lhs.x == rhs.x && lhs.y == rhs.y && lhs.z == rhs.z;
+}
+
 //--------------------------------------------------------------------------------
 // Vec4 Operators
 //--------------------------------------------------------------------------------

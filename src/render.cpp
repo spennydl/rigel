@@ -246,53 +246,27 @@ void BatchedTileRenderer::render(Viewport& viewport, Shader shader)
     glUseProgram(0);
 }
 
-Texture alloc_texture(int w, int h)
+Texture make_texture(TextureConfig config)
 {
     Texture tex;
 
     glGenTextures(1, &tex.id);
     glBindTexture(GL_TEXTURE_2D, tex.id);
 
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, config.wrap_s);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, config.wrap_t);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, config.min_filter);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, config.mag_filter);
+
     glTexImage2D(GL_TEXTURE_2D,
                  0,
-                 GL_RGBA,
-                 w,
-                 h,
+                 config.internal_format,
+                 config.width,
+                 config.height,
                  0,
-                 GL_RGBA,
-                 GL_UNSIGNED_BYTE,
-                 nullptr);
-    glGenerateMipmap(GL_TEXTURE_2D);
-    glBindTexture(GL_TEXTURE_2D, 0);
-
-    return tex;
-}
-
-Texture make_texture(int w, int h, ubyte* data)
-{
-    Texture tex;
-
-    glGenTextures(1, &tex.id);
-    glBindTexture(GL_TEXTURE_2D, tex.id);
-
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    //glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAX_LEVEL, 1);
-    glTexImage2D(GL_TEXTURE_2D,
-                 0,
-                 GL_RGBA,
-                 w,
-                 h,
-                 0,
-                 GL_RGBA,
-                 GL_UNSIGNED_BYTE,
-                 data);
+                 config.src_format,
+                 config.src_data_type,
+                 config.data);
     glGenerateMipmap(GL_TEXTURE_2D);
     glBindTexture(GL_TEXTURE_2D, 0);
 
@@ -328,38 +302,30 @@ Quad::Quad(rigel::Rectangle rect, Shader shader)
     glBindVertexArray(0);
 }
 
-Texture make_texture(ImageResource image)
-{
-    return make_texture(image.width, image.height, image.data);
-}
-
-Texture make_array_texture_from_vstrip(ImageResource image, usize n_images)
+Texture make_array_texture_from_vstrip(ImageResource image, TextureConfig config)
 {
     Texture tex;
     glGenTextures(1, &tex.id);
     glBindTexture(GL_TEXTURE_2D_ARRAY, tex.id);
 
-    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, config.wrap_s);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, config.wrap_t);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, config.min_filter);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, config.mag_filter);
     glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAX_LEVEL, 1);
 
-    usize slice_height = image.height / n_images;
+    usize slice_height = image.height / image.n_frames;
 
     glTexImage3D(GL_TEXTURE_2D_ARRAY,
                  0,
-                 GL_RGBA8,
+                 config.internal_format,
                  image.width,
                  slice_height,
-                 n_images,
+                 image.n_frames,
                  0,
-                 GL_RGBA,
-                 GL_UNSIGNED_BYTE,
+                 config.src_format,
+                 config.src_data_type,
                  image.data);
-
-    // Do I need this?
-    // glGenerateMipmap(GL_TEXTURE_2D_ARRAY);
 
     return tex;
 }
@@ -370,8 +336,8 @@ Texture alloc_array_texture(usize w, usize h, usize layers, usize internal_forma
     glGenTextures(1, &tex.id);
     glBindTexture(GL_TEXTURE_2D_ARRAY, tex.id);
 
-    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAX_LEVEL, 1);
@@ -551,10 +517,14 @@ Texture* get_renderable_texture(ResourceId sprite_id)
         Texture* result = ready_textures->textures + next_idx;
 
         ImageResource image_resource = get_image_resource(sprite_id);
+        TextureConfig tex_config;
+        tex_config.width = image_resource.width;
+        tex_config.height = image_resource.height;
+        tex_config.data = image_resource.data;
         if (image_resource.n_frames == 1) {
-            *result = make_texture(image_resource);
+            *result = make_texture(tex_config);
         } else {
-            *result = make_array_texture_from_vstrip(image_resource, image_resource.n_frames);
+            *result = make_array_texture_from_vstrip(image_resource, tex_config);
         }
 
         map_entry->resource_id = map_idx;
@@ -613,7 +583,6 @@ void main(){
     float y_pos = (tex_uv.y * 1080.0f);
     int idx = int(y_pos) % 6;
     float mult = dist[idx];
-    //float mult = 1 - (max(0, modded - 3) / 3.0);
 
     float x_pos = (tex_uv.x * 1920.0);
     vec2 left = vec2((x_pos - 1) / 1920.0, y_pos / 1080.0);
@@ -623,9 +592,47 @@ void main(){
     vec4 center = texture(game, tex_uv);
     vec4 right_color = texture(game, right);
 
-    vec4 final = vec4(left_color.r, center.g, right_color.b, center.a);
-    FragColor = mult * final;
+    vec4 final = mult * vec4(left_color.r, center.g, right_color.b, center.a);
+
+    float exposure = 0.8;
+    final.rgb = vec3(1.0) - exp(-final.rgb * exposure);
+    final.rgb = pow(final.rgb, vec3(1.0/2.2));
+    FragColor = final;
 })SRC";
+
+const char* fs_gradient = R"SRC(
+#version 400 core
+in vec2 tex_uv;
+out vec4 FragColor;
+
+mat4 dither = (1.0 / 16.0) * mat4(
+    vec4(0.0, 12.0, 3.0, 15.0),
+    vec4(8.0, 4.0, 11.0, 7.0),
+    vec4(2.0, 14.0, 1.0, 13.0),
+    vec4(10.0, 6.0, 9.0, 5.0)
+);
+
+void main()
+{
+    vec2 pixel = tex_uv * vec2(320.0, 180.0);
+    vec3 sky = vec3(0.3419, 0.2878, 0.542);
+    //vec3 sky = vec3(0.0, 0.0, 0.0);
+    vec3 horizon = vec3(0.3419, 0.2178, 0.452);
+    //vec3 horizon = 0.0 * vec3(0.0941, 0.0784, 0.10196);
+
+    int x = int(pixel.x);
+    int y = int(pixel.y);
+    int dither_x = x & 3;
+    int dither_y = y & 3;
+
+    vec3 col = mix(vec3(1, 1, 1), vec3(0, 0, 0), clamp((tex_uv.y) * 2, 0, 1));
+
+    float brightness = length(col / length(vec3(1, 1, 1)));
+    col = (brightness > dither[dither_y][dither_x]) ? sky : horizon;
+
+    FragColor = vec4(col, 1.0);
+}
+)SRC";
 
 RenderTarget make_render_to_texture_target(i32 w, i32 h)
 {
@@ -634,7 +641,15 @@ RenderTarget make_render_to_texture_target(i32 w, i32 h)
     result.w = w;
     result.h = h;
     result.l = 1;
-    result.target_texture = alloc_texture(w, h);
+    TextureConfig tex_config;
+    tex_config.width = w;
+    tex_config.height = h;
+    tex_config.src_format = GL_RGBA;
+    tex_config.internal_format = GL_RGBA16F;
+    tex_config.src_data_type = GL_FLOAT;
+    tex_config.wrap_s = GL_CLAMP_TO_EDGE;
+    tex_config.wrap_t = GL_CLAMP_TO_EDGE;
+    result.target_texture = make_texture(tex_config);
 
     // create the internal framebuffer
     glGenFramebuffers(1, &result.target_framebuf);
@@ -739,6 +754,9 @@ void initialize_renderer(mem::Arena* gfx_arena, f32 fb_width, f32 fb_height)
     // TODO: use proper resources here
     screen_shader->load_from_src(screen_vs_src, screen_fs_src);
 
+    Shader* background_gradient_shader = &game_shaders[BACKGROUND_GRADIENT_SHADER];
+    background_gradient_shader->load_from_src(screen_vs_src, fs_gradient);
+
     Shader* map_shader = &game_shaders[TILEMAP_DRAW_SHADER];
     TextResource map_shader_vs = load_text_resource("resource/shader/vs_map_batched.glsl");
     TextResource map_shader_fs = load_text_resource("resource/shader/fs_map_batched.glsl");
@@ -771,6 +789,11 @@ void initialize_renderer(mem::Arena* gfx_arena, f32 fb_width, f32 fb_height)
 
 }
 
+m::Vec4 linear_to_srgb(m::Vec4 rgba)
+{
+    return m::Vec4{powf(rgba.r, 2.2), powf(rgba.g, 2.2), powf(rgba.b, 2.2), rgba.a};
+}
+
 void begin_render(Viewport& viewport, GameState* game_state, f32 fb_width, f32 fb_height)
 {
     render_state.screen_target.w = fb_width;
@@ -785,24 +808,36 @@ void begin_render(Viewport& viewport, GameState* game_state, f32 fb_width, f32 f
 
     glViewport(0, 0, render_state.screen_target.w, render_state.screen_target.h);
     // NOTE: retrieved from tilesheet
-    glClearColor(0.0941, 0.0784, 0.10196, 1);
+    //m::Vec4 clear_color = linear_to_srgb(m::Vec4{0.0941, 0.0784, 0.10196, 1});
+    m::Vec4 clear_color = linear_to_srgb(m::Vec4{0.3019, 0.6178, 0.902, 1});
+    glClearColor(clear_color.r, clear_color.g, clear_color.b, clear_color.a);
     glClear(GL_COLOR_BUFFER_BIT);
 
+    auto active_chunk = game_state->active_world_chunk;
     // TODO: obs should have lights be their own thing somewhere
-    auto player = game_state->active_world_chunk->entities;
+    auto player = active_chunk->entities;
     auto player_collider = player->colliders->aabbs[0];
     m::Vec3 player_center = player->position + player_collider.extents;
 
     render_state.global_uniforms.screen_transform = viewport.get_screen_transform();
-    UniformLight player_point_light;
-    player_point_light.position = m::Vec4 {player_center.x, player_center.y, player_center.z, 0.0f};
-    player_point_light.color = m::Vec4 {0.6, 0.6f, 0.35f, 1.0f}; // fourth component could be strength?
-    render_state.global_uniforms.point_lights[0] = player_point_light;
+    for (i32 l = 0; l < active_chunk->next_free_light_idx; l++)
+    {
+        auto light = active_chunk->lights + l;
+        auto uniform = render_state.global_uniforms.point_lights + l;
+        uniform->position = m::Vec4{light->position.x, light->position.y, light->position.z, 1};
+        uniform->color = m::Vec4{light->color.x, light->color.y, light->color.z, 1};
+    }
+    render_state.global_uniforms.n_lights.x = active_chunk->next_free_light_idx;
+    //UniformLight player_point_light;
+    //player_point_light.position = m::Vec4 {player_center.x, player_center.y, player_center.z, 0.0f};
+    //player_point_light.color = m::Vec4 {12.0f, 12.0f, 7.0f, 1.0f}; // fourth component could be strength?
+    //render_state.global_uniforms.point_lights[0] = player_point_light;
+//
+    //UniformLight other_light;
+    //other_light.position = m::Vec4 {210.0f, 80.0f, 0.0f, 0.0f};
+    //other_light.color = m::Vec4 {6.0f, 10.0f, 10.0f, 1.0f};
+    //render_state.global_uniforms.point_lights[1] = other_light;
 
-    UniformLight other_light;
-    other_light.position = m::Vec4 {210.0f, 80.0f, 0.0f, 0.0f};
-    other_light.color = m::Vec4 {0.3f, 1.0f, 1.0f, 1.0f};
-    render_state.global_uniforms.point_lights[1] = other_light;
 
     glBindBuffer(GL_UNIFORM_BUFFER, render_state.global_ubo);
     glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(GlobalUniforms), &render_state.global_uniforms);
@@ -847,12 +882,47 @@ void lighting_pass(mem::Arena* scratch_arena, TileMap* tile_map)
 
 }
 
+void render_background()
+{
+    f32 fb_width = render_state.internal_target.w;
+    f32 fb_height = render_state.internal_target.h;
+    GpuQuad screen = render_state.screen;
+    Shader screen_shader = game_shaders[BACKGROUND_GRADIENT_SHADER];
+    f32 scale_factor = render_state.screen_target.w / render_state.internal_target.w;
+
+    m::Mat4 world_transform =
+        m::translation_by(m::Vec3 {-0.5, -0.5, 0.0}) *
+        m::scale_by(m::Vec3 {2.0f, 2.0f, 0.0f });
+
+    m::Mat4 screen_transform =
+        m::mat4_I();
+        //m::scale_by(
+        //m::Vec3 {scale_factor * (2.0f / render_state.internal_target.w),
+                //-scale_factor * (2.0f / render_state.internal_target.h), 0});
+
+    glUseProgram(screen_shader.id);
+    glUniformMatrix4fv(glGetUniformLocation(screen_shader.id, "screen_transform"),
+                       1,
+                       false,
+                       reinterpret_cast<f32*>(&screen_transform));
+    glUniformMatrix4fv(glGetUniformLocation(screen_shader.id, "world_transform"),
+                       1,
+                       false,
+                       reinterpret_cast<f32*>(&world_transform));
+
+    glBindVertexArray(screen.vao);
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+    glBindVertexArray(0);
+}
+
 void render_background_layer(Viewport& viewport, WorldChunk* world_chunk)
 {
     RenderableAssets* assets = reinterpret_cast<RenderableAssets*>(render_state.gfx_arena->mem_begin);
     WorldChunkDrawData* draw_data = assets->renderable_world_maps + world_chunk->level_index;
     assert(draw_data->renderable && "Tried to render an unready background tile map");
 
+    glUseProgram(game_shaders[TILEMAP_DRAW_SHADER].id);
+    glUniform1f(glGetUniformLocation(game_shaders[TILEMAP_DRAW_SHADER].id, "dimmer"), 0.9f);
     draw_data->bg_renderer.render(viewport, game_shaders[TILEMAP_DRAW_SHADER]);
 }
 
@@ -862,6 +932,8 @@ void render_foreground_layer(Viewport& viewport, WorldChunk* world_chunk)
     WorldChunkDrawData* draw_data = assets->renderable_world_maps + world_chunk->level_index;
     assert(draw_data->renderable && "Tried to render an unready foreground tile map");
 
+    glUseProgram(game_shaders[TILEMAP_DRAW_SHADER].id);
+    glUniform1f(glGetUniformLocation(game_shaders[TILEMAP_DRAW_SHADER].id, "dimmer"), 1.0f);
     draw_data->fg_renderer.render(viewport, game_shaders[TILEMAP_DRAW_SHADER]);
 }
 
@@ -871,6 +943,8 @@ void render_decoration_layer(Viewport& viewport, WorldChunk* world_chunk)
     WorldChunkDrawData* draw_data = assets->renderable_world_maps + world_chunk->level_index;
     assert(draw_data->renderable && "Tried to render an unready decoration tile map");
 
+    glUseProgram(game_shaders[TILEMAP_DRAW_SHADER].id);
+    glUniform1f(glGetUniformLocation(game_shaders[TILEMAP_DRAW_SHADER].id, "dimmer"), 1.0f);
     draw_data->deco_renderer.render(viewport, game_shaders[TILEMAP_DRAW_SHADER]);
 }
 
@@ -1046,8 +1120,9 @@ void begin_render_to_target(RenderTarget target)
     render_state.current_viewport.h = target.h;
 
     glViewport(0, 0, target.w, target.h);
-    glClearColor(0.0941 * 0.5, 0.0784 * 0.5, 0.10196 * 0.5, 1);
-    //glClearColor(0, 0, 0, 1);
+    //m::Vec4 clear_color = linear_to_srgb(m::Vec4{0.0941, 0.0784, 0.10196, 1});
+    m::Vec4 clear_color = linear_to_srgb(m::Vec4{0.3019, 0.6178, 0.802, 1});
+    glClearColor(clear_color.r, clear_color.g, clear_color.b, clear_color.a);
     glClear(GL_COLOR_BUFFER_BIT);
 }
 

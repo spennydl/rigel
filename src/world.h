@@ -32,8 +32,24 @@ struct EntityHash
 enum LightType
 {
     LightType_Point,
-    LightType_Circle
+    LightType_Circle,
+    LightType_NLightTypes
 };
+
+inline LightType
+get_light_type_for_str(const char* str)
+{
+    if (strcmp(str, "LightType_Point") == 0)
+    {
+        return LightType_Point;
+    }
+    if (strcmp(str, "LightType_Circle") == 0)
+    {
+        return LightType_Circle;
+    }
+    return LightType_NLightTypes;
+}
+
 
 struct Light
 {
@@ -52,6 +68,7 @@ struct WorldChunk
     Entity entities[MAX_ENTITIES];
     EntityId player_id;
 
+    usize next_free_light_idx;
     Light lights[24];
 
     ZoneTriggerData zone_triggers[16];
@@ -60,6 +77,8 @@ struct WorldChunk
     EntityId add_entity(mem::GameMem& mem,
                         EntityType type,
                         m::Vec3 initial_position);
+
+    u32 add_light(LightType type, m::Vec3 position, m::Vec3 color);
 
 };
 

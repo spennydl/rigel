@@ -228,9 +228,10 @@ int main()
 
             render::begin_render_to_internal_target();
 
+            render::render_background();
+
             render::render_background_layer(viewport, world_chunk);
 
-            // TODO: anim frame? really? that needs to go onto an enitty somewhere
             render::render_all_entities(viewport, world_chunk);
 
             render::render_foreground_layer(viewport, world_chunk);

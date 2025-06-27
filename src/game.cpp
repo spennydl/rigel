@@ -139,7 +139,7 @@ WorldChunk* load_all_world_chunks(mem::GameMem& memory)
     // TODO: we should be getting chunk indexes from a resource
     // archive of some sort. We're nearing the point where we're
     // ready to start crafting a format for that.
-    WorldChunk* starting_chunk = load_world_chunk(memory, "resource/map/layered2.tmj");
+    WorldChunk* starting_chunk = load_world_chunk(memory, "resource/map/testoutdoor.tmj");
     starting_chunk->level_index = 0;
 
     memory.scratch_arena.reinit_zeroed();

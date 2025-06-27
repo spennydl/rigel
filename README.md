@@ -23,4 +23,6 @@ $ ./build/rigel
 
 # Resource Credits
 
-Rigel uses the Tranquil Tunnels tileset by Octoshrimpy retrieved from [here.](https://octoshrimpy.itch.io/tranquil-tunnels)
+Rigel uses the following tilesets:
+- Tranquil Tunnels tileset by Octoshrimpy retrieved from [here.](https://octoshrimpy.itch.io/tranquil-tunnels)
+- Tiny Adventures Forest Pack by Willian Mstach retrieved from [here.](https://willianmstach.itch.io/tiny-adventure-forest)
