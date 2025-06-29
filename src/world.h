@@ -63,12 +63,12 @@ struct WorldChunk
     i32 level_index;
     TileMap* active_map;
 
-    usize next_free_entity_idx;
+    i32 next_free_entity_idx;
     EntityHash entity_hash[MAX_ENTITIES];
     Entity entities[MAX_ENTITIES];
     EntityId player_id;
 
-    usize next_free_light_idx;
+    i32 next_free_light_idx;
     Light lights[24];
 
     ZoneTriggerData zone_triggers[16];

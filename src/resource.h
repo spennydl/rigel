@@ -108,15 +108,15 @@ struct AnimationResource
 
 // TODO: This needs to be a proper hash map now
 struct ResourceLookup {
-    usize next_free_text_id;
+    i32 next_free_text_id;
     StringKeyedMap<ResourceId, MAX_TEXT_RESOURCES> text_resource_map;
     TextResource text_resources[MAX_TEXT_RESOURCES];
 
-    usize next_free_image_id;
+    i32 next_free_image_id;
     StringKeyedMap<ResourceId, MAX_IMAGE_RESOURCES> image_resource_map;
     ImageResource image_resources[MAX_IMAGE_RESOURCES];
 
-    usize next_free_anim_id;
+    i32 next_free_anim_id;
     StringKeyedMap<ResourceId, MAX_ANIM_RESOURCES> anim_resource_map;
     AnimationResource anim_resources[MAX_ANIM_RESOURCES];
 

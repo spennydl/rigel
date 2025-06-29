@@ -7,6 +7,7 @@
 #include "game.h"
 #include "rigelmath.h"
 #include "debug.h"
+#include "input.h"
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_time.h>
@@ -74,10 +75,70 @@ initialize_game_memory()
     return memory;
 }
 
+enum AxisAndDirection
+{
+    AxisAndDirection_LeftXPos = SDL_GAMEPAD_BUTTON_COUNT,
+    AxisAndDirection_LeftXNeg,
+    AxisAndDirection_LeftYPos,
+    AxisAndDirection_LeftYNeg,
+    AxisAndDirection_RightXPos,
+    AxisAndDirection_RightXNeg,
+    AxisAndDirection_RightYPos,
+    AxisAndDirection_RightYNeg,
+    AxisAndDirection_N
+};
+
+using InputKeyMap = InputKeyMappingTable<i32>;
+
+InputKeyMap keyboard_mapping = {
+    {
+        { InputAction_None,      SDL_SCANCODE_UNKNOWN, SDL_SCANCODE_UNKNOWN },
+        { InputAction_MoveRight, SDL_SCANCODE_D,       SDL_SCANCODE_UNKNOWN },
+        { InputAction_MoveLeft,  SDL_SCANCODE_A,       SDL_SCANCODE_UNKNOWN },
+        { InputAction_Jump,      SDL_SCANCODE_W,       SDL_SCANCODE_UNKNOWN },
+    }
+};
+
+InputKeyMap controller_mapping = {
+    {
+        { InputAction_None,      SDL_GAMEPAD_BUTTON_INVALID,    SDL_GAMEPAD_BUTTON_INVALID },
+        { InputAction_MoveRight, SDL_GAMEPAD_BUTTON_DPAD_RIGHT, AxisAndDirection_LeftXPos  },
+        { InputAction_MoveLeft,  SDL_GAMEPAD_BUTTON_DPAD_LEFT,  AxisAndDirection_LeftXNeg  },
+        { InputAction_Jump,      SDL_GAMEPAD_BUTTON_SOUTH,      SDL_GAMEPAD_BUTTON_INVALID }
+    }
+};
+
+
+// 0 is an invalid joystick ID in SDL
+constexpr static u32 KEYBOARD_ID = 0;
+constexpr static u32 N_SUPPORTED_GAMEPADS = 4;
+struct InputDevice
+{
+    u32 id;
+    InputKeyMap keymap;
+};
+
+InputDevice keyboard = { 0, keyboard_mapping };
+InputDevice gamepads[N_SUPPORTED_GAMEPADS] = {0};
+
+InputDevice* active_input_device = &keyboard;
+
+InputAction get_action_for_button(i32 code)
+{
+    for (u32 i = 0; i < InputAction_NInputActions; i++)
+    {
+        auto mapping = active_input_device->keymap.map + i;
+        if (mapping->key == code || mapping->key_alt == code)
+        {
+            return mapping->action;
+        }
+    }
+    return InputAction_None;
+}
 
 int main()
 {
-    SDL_Init(SDL_INIT_VIDEO);
+    SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
@@ -91,6 +152,29 @@ int main()
 
     int version = gladLoadGL();
     std::cout << "Loaded version " << version << std::endl;
+
+    i32 gamepad_count;
+    auto plugged_gamepads = SDL_GetGamepads(&gamepad_count);
+    std::cout << "Found " << gamepad_count << " gamepads" << std::endl;
+
+    for (u32 gamepad = 0;
+         gamepad < (u32)gamepad_count && gamepad < N_SUPPORTED_GAMEPADS;
+         gamepad++)
+    {
+        if (SDL_OpenGamepad(plugged_gamepads[gamepad]))
+        {
+            gamepads[gamepad].id = plugged_gamepads[gamepad];
+            gamepads[gamepad].keymap = controller_mapping;
+        }
+        else
+        {
+            std::cout << "Nope" << std::endl;
+        }
+    }
+    if (gamepad_count)
+    {
+        active_input_device = gamepads;
+    }
 
     mem::GameMem memory = initialize_game_memory();
 
@@ -125,10 +209,6 @@ int main()
         std::cerr << "warn: couln't get current time? " << SDL_GetError() << std::endl;
     }
 
-    i64 anim_time = 0;
-    usize anim_frame = 0;
-
-
     while (running) {
         memory.scratch_arena.reinit();
 
@@ -137,47 +217,117 @@ int main()
             switch (event.type) {
                 case SDL_EVENT_QUIT: {
                     running = false;
-                    break;
                 }
+                break;
+                case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
+                {
+                    SDL_GamepadButtonEvent gbutton = event.gbutton;
+
+                    auto action = get_action_for_button(gbutton.button);
+                    if (action != InputAction_None)
+                    {
+                        switch (action)
+                        {
+                            case InputAction_MoveRight:
+                            {
+                                g_input_state.move_right_requested = true;
+                            } break;
+                            case InputAction_MoveLeft:
+                            {
+                                g_input_state.move_left_requested = true;
+                            } break;
+                            case InputAction_Jump:
+                            {
+                                g_input_state.jump_requested = true;
+                            } break;
+                            default:
+                                break;
+                        }
+                    }
+
+                }
+                break;
+                case SDL_EVENT_GAMEPAD_BUTTON_UP:
+                {
+                    SDL_GamepadButtonEvent gbutton = event.gbutton;
+
+                    auto action = get_action_for_button(gbutton.button);
+                    if (action != InputAction_None)
+                    {
+                        switch (action)
+                        {
+                            case InputAction_MoveRight:
+                            {
+                                g_input_state.move_right_requested = false;
+                            } break;
+                            case InputAction_MoveLeft:
+                            {
+                                g_input_state.move_left_requested = false;
+                            } break;
+                            case InputAction_Jump:
+                            {
+                                g_input_state.jump_requested = false;
+                            } break;
+                            default:
+                                break;
+                        }
+                    }
+
+                }
+                break;
                 case SDL_EVENT_KEY_DOWN: {
                     SDL_KeyboardEvent key_event = event.key;
                     if (key_event.repeat) {
                         continue;
                     }
-                    switch (key_event.scancode) {
-                        case SDL_SCANCODE_W: {
-                            g_input_state.jump_requested = true;
-                            break;
-                        }
-                        case SDL_SCANCODE_A: {
-                            g_input_state.move_left_requested = true;
-                            break;
-                        }
-                        case SDL_SCANCODE_D: {
-                            g_input_state.move_right_requested = true;
-                            break;
-                        }
 
-                    } break;
+                    auto action = get_action_for_button(key_event.scancode);
+                    if (action != InputAction_None)
+                    {
+                        switch (action)
+                        {
+                            case InputAction_MoveRight:
+                            {
+                                g_input_state.move_right_requested = true;
+                            } break;
+                            case InputAction_MoveLeft:
+                            {
+                                g_input_state.move_left_requested = true;
+                            } break;
+                            case InputAction_Jump:
+                            {
+                                g_input_state.jump_requested = true;
+                            } break;
+                            default:
+                                break;
+                        }
+                    }
                 }
+                break;
                 case SDL_EVENT_KEY_UP:
                 {
                     SDL_KeyboardEvent key_event = event.key;
-                    switch (key_event.scancode)
+                    auto action = get_action_for_button(key_event.scancode);
+                    if (action != InputAction_None)
                     {
-                        case SDL_SCANCODE_W:
+                        switch (action)
                         {
-                            // TODO: this isn't gonna work.
-                            g_input_state.jump_requested = false;
-                        } break;
-                        case SDL_SCANCODE_A:
-                        {
-                            g_input_state.move_left_requested = false;
-                        } break;
-                        case SDL_SCANCODE_D:
-                        {
-                            g_input_state.move_right_requested = false;
-                        } break;
+                            case InputAction_MoveRight:
+                            {
+                                std::cout << "NO move right" << std::endl;
+                                g_input_state.move_right_requested = false;
+                            } break;
+                            case InputAction_MoveLeft:
+                            {
+                                g_input_state.move_left_requested = false;
+                            } break;
+                            case InputAction_Jump:
+                            {
+                                g_input_state.jump_requested = false;
+                            } break;
+                            default:
+                                break;
+                        }
                     }
                 } break;
                 default:
@@ -228,7 +378,7 @@ int main()
 
             render::begin_render_to_internal_target();
 
-            render::render_background();
+            //render::render_background();
 
             render::render_background_layer(viewport, world_chunk);
 

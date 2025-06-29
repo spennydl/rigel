@@ -4,6 +4,7 @@
 #include "json.h"
 #include "render.h"
 #include "debug.h"
+#include "input.h"
 
 namespace rigel {
 
@@ -123,10 +124,7 @@ load_entity_prototypes(mem::GameMem& memory, const char* filepath)
         auto collider_height = jsonobj_get(obj, "collider_height", 15)->number->value;
         Rectangle entity_collider { 0, 0, collider_width, collider_height };
 
-        // TODO: should load animations from json exported by aseprite
-        auto frames = jsonobj_get(obj, "frames", 6)->number->value;
-
-        // TOD
+        // TODO
         auto resource = get_or_load_image_resource(path_buf, anim->n_frames);
         entity_proto->spritesheet = resource;
         entity_proto->animation_id = anim->id;
@@ -139,7 +137,7 @@ WorldChunk* load_all_world_chunks(mem::GameMem& memory)
     // TODO: we should be getting chunk indexes from a resource
     // archive of some sort. We're nearing the point where we're
     // ready to start crafting a format for that.
-    WorldChunk* starting_chunk = load_world_chunk(memory, "resource/map/testoutdoor.tmj");
+    WorldChunk* starting_chunk = load_world_chunk(memory, "resource/map/layered2.tmj");
     starting_chunk->level_index = 0;
 
     memory.scratch_arena.reinit_zeroed();
@@ -390,7 +388,7 @@ simulate_one_tick(mem::GameMem& memory, GameState* game_state, f32 dt)
 void
 update_animations(WorldChunk* active_chunk, f32 dt)
 {
-    for (u32 eid = 0;
+    for (i32 eid = 0;
          eid < active_chunk->next_free_entity_idx;
          eid++)
     {

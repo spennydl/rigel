@@ -45,14 +45,6 @@ constexpr static EntityId PLAYER_ENTITY_ID = 0;
 constexpr static i64 UPDATE_TIME_NS = 16666667;//8333333;
 constexpr static i64 RENDER_TIME_NS = 16666667;
 
-// Globals
-struct InputState {
-    bool move_right_requested;
-    bool move_left_requested;
-    bool jump_requested;
-};
-
-extern InputState g_input_state;
 
 }
 

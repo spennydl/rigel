@@ -594,8 +594,8 @@ void main(){
 
     vec4 final = mult * vec4(left_color.r, center.g, right_color.b, center.a);
 
-    float exposure = 0.8;
-    final.rgb = vec3(1.0) - exp(-final.rgb * exposure);
+    //float exposure = 0.3;
+    //final.rgb = vec3(1.0) - exp(-final.rgb * exposure);
     final.rgb = pow(final.rgb, vec3(1.0/2.2));
     FragColor = final;
 })SRC";
@@ -614,11 +614,12 @@ mat4 dither = (1.0 / 16.0) * mat4(
 
 void main()
 {
+    vec3 base_color = pow(vec3(0.0941, 0.0784, 0.10196), vec3(2.2));
     vec2 pixel = tex_uv * vec2(320.0, 180.0);
-    vec3 sky = vec3(0.3419, 0.2878, 0.542);
-    //vec3 sky = vec3(0.0, 0.0, 0.0);
-    vec3 horizon = vec3(0.3419, 0.2178, 0.452);
-    //vec3 horizon = 0.0 * vec3(0.0941, 0.0784, 0.10196);
+    //vec3 sky = vec3(0.3419, 0.2878, 0.542);
+    vec3 sky = base_color;
+    //vec3 horizon = vec3(0.3419, 0.2178, 0.452);
+    vec3 horizon = base_color;
 
     int x = int(pixel.x);
     int y = int(pixel.y);
@@ -808,8 +809,8 @@ void begin_render(Viewport& viewport, GameState* game_state, f32 fb_width, f32 f
 
     glViewport(0, 0, render_state.screen_target.w, render_state.screen_target.h);
     // NOTE: retrieved from tilesheet
-    //m::Vec4 clear_color = linear_to_srgb(m::Vec4{0.0941, 0.0784, 0.10196, 1});
-    m::Vec4 clear_color = linear_to_srgb(m::Vec4{0.3019, 0.6178, 0.902, 1});
+    m::Vec4 clear_color = linear_to_srgb(m::Vec4{0.0941, 0.0784, 0.10196, 1});
+    //m::Vec4 clear_color = linear_to_srgb(m::Vec4{0.3019, 0.6178, 0.902, 1});
     glClearColor(clear_color.r, clear_color.g, clear_color.b, clear_color.a);
     glClear(GL_COLOR_BUFFER_BIT);
 
@@ -820,24 +821,21 @@ void begin_render(Viewport& viewport, GameState* game_state, f32 fb_width, f32 f
     m::Vec3 player_center = player->position + player_collider.extents;
 
     render_state.global_uniforms.screen_transform = viewport.get_screen_transform();
-    for (i32 l = 0; l < active_chunk->next_free_light_idx; l++)
+    i32 l;
+    for (l = 0; l < active_chunk->next_free_light_idx; l++)
     {
         auto light = active_chunk->lights + l;
         auto uniform = render_state.global_uniforms.point_lights + l;
-        uniform->position = m::Vec4{light->position.x, light->position.y, light->position.z, 1};
+        // heck!
+        float light_z = 5.0f;
+        uniform->position = m::Vec4{light->position.x, light->position.y, light_z, 1};
         uniform->color = m::Vec4{light->color.x, light->color.y, light->color.z, 1};
     }
-    render_state.global_uniforms.n_lights.x = active_chunk->next_free_light_idx;
-    //UniformLight player_point_light;
-    //player_point_light.position = m::Vec4 {player_center.x, player_center.y, player_center.z, 0.0f};
-    //player_point_light.color = m::Vec4 {12.0f, 12.0f, 7.0f, 1.0f}; // fourth component could be strength?
-    //render_state.global_uniforms.point_lights[0] = player_point_light;
-//
-    //UniformLight other_light;
-    //other_light.position = m::Vec4 {210.0f, 80.0f, 0.0f, 0.0f};
-    //other_light.color = m::Vec4 {6.0f, 10.0f, 10.0f, 1.0f};
-    //render_state.global_uniforms.point_lights[1] = other_light;
-
+    UniformLight player_point_light;
+    player_point_light.position = m::Vec4 {player_center.x, player_center.y, 10.0f, 1.0f};
+    player_point_light.color = m::Vec4 {2.0f, 2.0f, 1.0f, 1.0f}; // fourth component could be strength?
+    render_state.global_uniforms.point_lights[l] = player_point_light;
+    render_state.global_uniforms.n_lights.x = active_chunk->next_free_light_idx + 1;
 
     glBindBuffer(GL_UNIFORM_BUFFER, render_state.global_ubo);
     glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(GlobalUniforms), &render_state.global_uniforms);
@@ -852,13 +850,12 @@ void lighting_pass(mem::Arena* scratch_arena, TileMap* tile_map)
     // - classic point lights
     // - limited area lights that cast a relatively uniform value over a discrete
     //   circle
-    usize n_lights = 2;
+    usize n_lights = render_state.global_uniforms.n_lights.x;
 
-    Shader shadow_shader = game_shaders[TILE_OCCLUDER_SHADER];
-
-    // TODO: this needs to remember a stack of targets!
-    // It also may not clear correctly? Lots of questions with this one.
+    // TODO: This should take an optional clear color
     begin_render_to_target(render_state.shadowmap_target);
+    glClearColor(0, 0, 0, 0);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     for (usize light_idx = 0;
          light_idx < n_lights;
          light_idx++)
@@ -884,11 +881,8 @@ void lighting_pass(mem::Arena* scratch_arena, TileMap* tile_map)
 
 void render_background()
 {
-    f32 fb_width = render_state.internal_target.w;
-    f32 fb_height = render_state.internal_target.h;
     GpuQuad screen = render_state.screen;
     Shader screen_shader = game_shaders[BACKGROUND_GRADIENT_SHADER];
-    f32 scale_factor = render_state.screen_target.w / render_state.internal_target.w;
 
     m::Mat4 world_transform =
         m::translation_by(m::Vec3 {-0.5, -0.5, 0.0}) *
@@ -1066,9 +1060,6 @@ void make_shadow_map_for_point_light(mem::Arena* scratch_arena, TileMap* tile_ma
 
 void render_all_entities(Viewport& viewport, WorldChunk* world_chunk)
 {
-    RenderableAssets* assets = reinterpret_cast<RenderableAssets*>(render_state.gfx_arena->mem_begin);
-    TextureLookup* texture_lookup = assets->ready_textures;
-
     auto screen = viewport.get_screen_transform();
     for (EntityId eid = 0; eid < world_chunk->next_free_entity_idx; eid++) {
         auto e = world_chunk->entities + eid;
@@ -1120,8 +1111,8 @@ void begin_render_to_target(RenderTarget target)
     render_state.current_viewport.h = target.h;
 
     glViewport(0, 0, target.w, target.h);
-    //m::Vec4 clear_color = linear_to_srgb(m::Vec4{0.0941, 0.0784, 0.10196, 1});
-    m::Vec4 clear_color = linear_to_srgb(m::Vec4{0.3019, 0.6178, 0.802, 1});
+    m::Vec4 clear_color = linear_to_srgb(m::Vec4{0.0941, 0.0784, 0.10196, 1});
+    //m::Vec4 clear_color = linear_to_srgb(m::Vec4{0.3019, 0.6178, 0.802, 1});
     glClearColor(clear_color.r, clear_color.g, clear_color.b, clear_color.a);
     glClear(GL_COLOR_BUFFER_BIT);
 }

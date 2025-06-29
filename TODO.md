@@ -9,8 +9,13 @@
    - use trigger zones to switch between levels
  - text rendering!
  - lighting
-   - store lights in the world chunk and render them from there
-   - create a circle light type
+   - BIG tech debt in the shader architecture. Hoooooowee. Needs a good afternoon's worth of cleanup.
+   - Tuning! Need to be able to set and tune:
+     - ambient lighting
+     - background gradient
+     - light attenuation coefficients
+     - HDR exposure parameter (if we even HDR at all)
+   - create a circle light type (maybe? I dunno if I actually want this)
    - we need a notion of entity attachments so we can attach lights to entities
  - pull player behavior out into a more final place. Was thinking a brain sorta abstraction,
    but I dunno. (sorta done, needs more time in the oven)
@@ -18,6 +23,7 @@
 
 ## DONE
 
+- store lights in the world chunk and render them from there
 - start laying in lighting.
 - we need a proper math lib. if we could get rid of glm i'd be super happy too. This may
   be a good task for a slow day.

@@ -39,34 +39,32 @@ void main()
     // point lights
     for (int light_index = 0; light_index < num_lights; light_index++) {
         float shadow_avg = 0;
-        for (int voffset = -3; voffset < 4; voffset++) {
-            for (int hoffset = -3; hoffset < 4; hoffset++) {
+        for (int voffset = -1; voffset < 2; voffset++) {
+            for (int hoffset = -1; hoffset < 2; hoffset++) {
                 vec3 uv = vec3((frag.x + hoffset) / 320.0, (frag.y + voffset) / 180.0, light_index);
                 vec4 shadow_sample = texture(shadow_map, uv);
                 shadow_avg += shadow_sample.r;
             }
         }
 
-        shadow_avg = shadow_avg / 49.0;
-
+        shadow_avg = shadow_avg / 9.0;
 
         Light light = point_lights[light_index];
         vec3 light_position = light.position.xyz;
-        // TODO: should just use the light position z
-        light_position.z = 5.0 + 30*light_index;
 
         float distsq_to_light = length(light_position - frag);
         vec3 light_dir = normalize(light_position - frag);
 
-        float diffuse = max(dot(light_dir, normal), 0);
+        float cos_t = max(dot(light_dir, normal), 0);
+        vec3 diffuse = tex_sample.xyz / 3.14159;
         float attenuation = (1 - shadow_avg)
-              * (2.0 / (1.0 + (0.022*distsq_to_light + (0.0019 * distsq_to_light * distsq_to_light))));
+              * (2.0 / (1.0 + (0.07*distsq_to_light + (0.017 * distsq_to_light * distsq_to_light))));
 
-        vec3 color = diffuse * light.color.xyz * tex_sample.xyz * attenuation;
-        color += 0.7 * mix(tex_sample.xyz, vec3(0.0, 0.0, 0.4), 0.1); // ambient
+        vec3 color = diffuse * cos_t * light.color.xyz * attenuation;
 
-        final_color += (1.0 / num_lights) * color;
+        final_color += color;
     }
 
+    final_color += pow(0.1, 2.2) * tex_sample.xyz;//mix(tex_sample.xyz, vec3(0.0, 0.0, 0.4), 0.1); // ambient
     FragColor = dimmer * vec4(final_color, tex_sample.w);
 }
