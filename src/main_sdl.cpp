@@ -75,66 +75,6 @@ initialize_game_memory()
     return memory;
 }
 
-enum AxisAndDirection
-{
-    AxisAndDirection_LeftXPos = SDL_GAMEPAD_BUTTON_COUNT,
-    AxisAndDirection_LeftXNeg,
-    AxisAndDirection_LeftYPos,
-    AxisAndDirection_LeftYNeg,
-    AxisAndDirection_RightXPos,
-    AxisAndDirection_RightXNeg,
-    AxisAndDirection_RightYPos,
-    AxisAndDirection_RightYNeg,
-    AxisAndDirection_N
-};
-
-using InputKeyMap = InputKeyMappingTable<i32>;
-
-InputKeyMap keyboard_mapping = {
-    {
-        { InputAction_None,      SDL_SCANCODE_UNKNOWN, SDL_SCANCODE_UNKNOWN },
-        { InputAction_MoveRight, SDL_SCANCODE_D,       SDL_SCANCODE_UNKNOWN },
-        { InputAction_MoveLeft,  SDL_SCANCODE_A,       SDL_SCANCODE_UNKNOWN },
-        { InputAction_Jump,      SDL_SCANCODE_W,       SDL_SCANCODE_UNKNOWN },
-    }
-};
-
-InputKeyMap controller_mapping = {
-    {
-        { InputAction_None,      SDL_GAMEPAD_BUTTON_INVALID,    SDL_GAMEPAD_BUTTON_INVALID },
-        { InputAction_MoveRight, SDL_GAMEPAD_BUTTON_DPAD_RIGHT, AxisAndDirection_LeftXPos  },
-        { InputAction_MoveLeft,  SDL_GAMEPAD_BUTTON_DPAD_LEFT,  AxisAndDirection_LeftXNeg  },
-        { InputAction_Jump,      SDL_GAMEPAD_BUTTON_SOUTH,      SDL_GAMEPAD_BUTTON_INVALID }
-    }
-};
-
-
-// 0 is an invalid joystick ID in SDL
-constexpr static u32 KEYBOARD_ID = 0;
-constexpr static u32 N_SUPPORTED_GAMEPADS = 4;
-struct InputDevice
-{
-    u32 id;
-    InputKeyMap keymap;
-};
-
-InputDevice keyboard = { 0, keyboard_mapping };
-InputDevice gamepads[N_SUPPORTED_GAMEPADS] = {0};
-
-InputDevice* active_input_device = &keyboard;
-
-InputAction get_action_for_button(i32 code)
-{
-    for (u32 i = 0; i < InputAction_NInputActions; i++)
-    {
-        auto mapping = active_input_device->keymap.map + i;
-        if (mapping->key == code || mapping->key_alt == code)
-        {
-            return mapping->action;
-        }
-    }
-    return InputAction_None;
-}
 
 int main()
 {
@@ -153,28 +93,7 @@ int main()
     int version = gladLoadGL();
     std::cout << "Loaded version " << version << std::endl;
 
-    i32 gamepad_count;
-    auto plugged_gamepads = SDL_GetGamepads(&gamepad_count);
-    std::cout << "Found " << gamepad_count << " gamepads" << std::endl;
-
-    for (u32 gamepad = 0;
-         gamepad < (u32)gamepad_count && gamepad < N_SUPPORTED_GAMEPADS;
-         gamepad++)
-    {
-        if (SDL_OpenGamepad(plugged_gamepads[gamepad]))
-        {
-            gamepads[gamepad].id = plugged_gamepads[gamepad];
-            gamepads[gamepad].keymap = controller_mapping;
-        }
-        else
-        {
-            std::cout << "Nope" << std::endl;
-        }
-    }
-    if (gamepad_count)
-    {
-        active_input_device = gamepads;
-    }
+    input_start();
 
     mem::GameMem memory = initialize_game_memory();
 
@@ -221,7 +140,13 @@ int main()
                 break;
                 case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
                 {
+                    std::cout << "SDL_EVENT_GAMEPAD_BUTTON_DOWN" << std::endl;
                     SDL_GamepadButtonEvent gbutton = event.gbutton;
+
+                    if (get_active_input_device()->id != gbutton.which)
+                    {
+                        set_active_input_device(gbutton.which);
+                    }
 
                     auto action = get_action_for_button(gbutton.button);
                     if (action != InputAction_None)
@@ -244,12 +169,16 @@ int main()
                                 break;
                         }
                     }
-
-                }
-                break;
+                } break;
                 case SDL_EVENT_GAMEPAD_BUTTON_UP:
                 {
+                    std::cout << "SDL_EVENT_GAMEPAD_BUTTON_UP" << std::endl;
                     SDL_GamepadButtonEvent gbutton = event.gbutton;
+
+                    if (get_active_input_device()->id != gbutton.which)
+                    {
+                        set_active_input_device(gbutton.which);
+                    }
 
                     auto action = get_action_for_button(gbutton.button);
                     if (action != InputAction_None)
@@ -273,12 +202,17 @@ int main()
                         }
                     }
 
-                }
-                break;
+                } break;
                 case SDL_EVENT_KEY_DOWN: {
+                    std::cout << "SDL_EVENT_KEY_DOWN" << std::endl;
                     SDL_KeyboardEvent key_event = event.key;
                     if (key_event.repeat) {
                         continue;
+                    }
+
+                    if (get_active_input_device()->id != KEYBOARD_DEVICE_ID)
+                    {
+                        set_active_input_device(KEYBOARD_DEVICE_ID);
                     }
 
                     auto action = get_action_for_button(key_event.scancode);
@@ -306,7 +240,14 @@ int main()
                 break;
                 case SDL_EVENT_KEY_UP:
                 {
+                    std::cout << "SDL_EVENT_KEY_UP" << std::endl;
                     SDL_KeyboardEvent key_event = event.key;
+
+                    if (get_active_input_device()->id != KEYBOARD_DEVICE_ID)
+                    {
+                        set_active_input_device(KEYBOARD_DEVICE_ID);
+                    }
+
                     auto action = get_action_for_button(key_event.scancode);
                     if (action != InputAction_None)
                     {
@@ -378,7 +319,7 @@ int main()
 
             render::begin_render_to_internal_target();
 
-            //render::render_background();
+            render::render_background();
 
             render::render_background_layer(viewport, world_chunk);
 

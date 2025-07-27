@@ -2,6 +2,7 @@
 #define RIGEL_H_
 
 #include <cstdint>
+#include <cassert>
 
 namespace rigel
 {

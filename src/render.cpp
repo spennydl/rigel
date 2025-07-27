@@ -27,6 +27,8 @@ struct RenderState
     GpuQuad screen;
 
     Rectangle current_viewport;
+    // TODO: just a test
+    u32 bg_image_id;
 
     // TODO: should this be here?
     GLuint global_ubo;
@@ -605,6 +607,8 @@ const char* fs_gradient = R"SRC(
 in vec2 tex_uv;
 out vec4 FragColor;
 
+uniform sampler2D bg_tex;
+
 mat4 dither = (1.0 / 16.0) * mat4(
     vec4(0.0, 12.0, 3.0, 15.0),
     vec4(8.0, 4.0, 11.0, 7.0),
@@ -612,26 +616,32 @@ mat4 dither = (1.0 / 16.0) * mat4(
     vec4(10.0, 6.0, 9.0, 5.0)
 );
 
+    //vec3 base_color = pow(vec3(0.0941, 0.0784, 0.10196), vec3(2.2));
+    ////vec3 sky = vec3(0.3419, 0.2878, 0.542);
+    //vec3 sky = base_color;
+    ////vec3 horizon = vec3(0.3419, 0.2178, 0.452);
+    //vec3 horizon = base_color;
+
 void main()
 {
-    vec3 base_color = pow(vec3(0.0941, 0.0784, 0.10196), vec3(2.2));
-    vec2 pixel = tex_uv * vec2(320.0, 180.0);
-    //vec3 sky = vec3(0.3419, 0.2878, 0.542);
-    vec3 sky = base_color;
-    //vec3 horizon = vec3(0.3419, 0.2178, 0.452);
-    vec3 horizon = base_color;
 
+    vec2 uv = tex_uv;
+    FragColor = texture(bg_tex, uv);
+return;
+    vec2 pixel = tex_uv * vec2(320.0, 180.0);
     int x = int(pixel.x);
     int y = int(pixel.y);
     int dither_x = x & 3;
     int dither_y = y & 3;
 
-    vec3 col = mix(vec3(1, 1, 1), vec3(0, 0, 0), clamp((tex_uv.y) * 2, 0, 1));
+    vec3 col = mix(vec3(1, 1, 1), vec3(0, 0, 0), (tex_uv.y * 0.5) - 0.5);
 
+    float yoff = ((dither[dither_y][dither_x] * 10.0) - 5.0) / 180.0;
     float brightness = length(col / length(vec3(1, 1, 1)));
-    col = (brightness > dither[dither_y][dither_x]) ? sky : horizon;
+    uv.y = clamp(uv.y + yoff, 0, 1);//(brightness > dither[dither_y][dither_x]) ? clamp(uv.y + yoff, 0, 1) : uv.y;
 
-    FragColor = vec4(col, 1.0);
+    //FragColor = vec4(brightness, brightness, brightness, 1.0);
+    //FragColor = vec4(col, 1.0);
 }
 )SRC";
 
@@ -784,6 +794,9 @@ void initialize_renderer(mem::Arena* gfx_arena, f32 fb_width, f32 fb_height)
     }
     assets->renderable_world_maps = gfx_arena->alloc_array<WorldChunkDrawData>(2);
 
+    ImageResource bg_image = load_image_resource("resource/image/Clouds/Clouds 7/1.png");
+    render_state.bg_image_id = bg_image.resource_id;
+
 #ifdef RIGEL_DEBUG
     render_debug_init(gfx_arena);
 #endif
@@ -884,6 +897,10 @@ void render_background()
     GpuQuad screen = render_state.screen;
     Shader screen_shader = game_shaders[BACKGROUND_GRADIENT_SHADER];
 
+    auto bg_tex = get_renderable_texture(render_state.bg_image_id);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, bg_tex->id);
+
     m::Mat4 world_transform =
         m::translation_by(m::Vec3 {-0.5, -0.5, 0.0}) *
         m::scale_by(m::Vec3 {2.0f, 2.0f, 0.0f });
@@ -903,9 +920,11 @@ void render_background()
                        1,
                        false,
                        reinterpret_cast<f32*>(&world_transform));
+    glUniform1i(glGetUniformLocation(screen_shader.id, "bg_tex"), 0);
 
     glBindVertexArray(screen.vao);
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+    glBindTexture(GL_TEXTURE_2D, 0);
     glBindVertexArray(0);
 }
 

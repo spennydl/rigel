@@ -147,12 +147,12 @@
                         {
                          "name":"Color",
                          "type":"color",
-                         "value":"#fffa7d01"
+                         "value":"#fffa5502"
                         }, 
                         {
                          "name":"Intensity",
                          "type":"float",
-                         "value":1200
+                         "value":2500
                         }, 
                         {
                          "name":"LightType",
@@ -164,8 +164,8 @@
                  "type":"Light",
                  "visible":true,
                  "width":0,
-                 "x":258.976125100411,
-                 "y":-77.1770743890296
+                 "x":240.235311777438,
+                 "y":56.3814579369688
                 }, 
                 {
                  "height":0,
@@ -176,12 +176,12 @@
                         {
                          "name":"Color",
                          "type":"color",
-                         "value":"#fffa7d01"
+                         "value":"#fffa5502"
                         }, 
                         {
                          "name":"Intensity",
                          "type":"float",
-                         "value":1200
+                         "value":2500
                         }, 
                         {
                          "name":"LightType",
@@ -193,8 +193,8 @@
                  "type":"Light",
                  "visible":true,
                  "width":0,
-                 "x":77.0733252388745,
-                 "y":-82.0883703742807
+                 "x":102.94,
+                 "y":81.2965
                 }, 
                 {
                  "height":0,
@@ -222,8 +222,8 @@
                  "type":"Light",
                  "visible":true,
                  "width":0,
-                 "x":32.2018687641873,
-                 "y":147.020007390593
+                 "x":38.8006,
+                 "y":129.599
                 }, 
                 {
                  "height":0,
@@ -251,8 +251,8 @@
                  "type":"Light",
                  "visible":true,
                  "width":0,
-                 "x":312.780446602967,
-                 "y":125.376128385155
+                 "x":157.049369054532,
+                 "y":88.4230379665312
                 }],
          "opacity":1,
          "type":"objectgroup",

@@ -65,6 +65,7 @@ void main()
         final_color += color;
     }
 
-    final_color += pow(0.1, 2.2) * tex_sample.xyz;//mix(tex_sample.xyz, vec3(0.0, 0.0, 0.4), 0.1); // ambient
-    FragColor = dimmer * vec4(final_color, tex_sample.w);
+    final_color += pow(0.8, 2.2) * tex_sample.xyz;//mix(tex_sample.xyz, vec3(0.0, 0.0, 0.4), 0.1); // ambient
+    final_color = mix(final_color, vec3(0.1), 1 - dimmer);
+    FragColor = vec4(final_color, tex_sample.w);
 }
