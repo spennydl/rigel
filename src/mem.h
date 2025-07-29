@@ -40,7 +40,7 @@ struct Arena
 
     void reinit_zeroed()
     {
-        for (usize i = 0; i < next_free_idx; i++)
+        for (usize i = 0; i < arena_bytes; i++)
         {
             mem_begin[i] = 0;
         }
@@ -132,11 +132,14 @@ struct GameMem
     byte_ptr* ephemeral_storage;
     usize ephemeral_storage_size;
 
+    // main arenas
     Arena game_state_arena;
     Arena ephemeral_arena;
+
+    // sub-arenas
     Arena stage_arena;
     Arena colliders_arena;
-    Arena scratch_arena;
+    Arena frame_temp_arena;
     Arena resource_arena;
     Arena gfx_arena;
     Arena debug_arena;

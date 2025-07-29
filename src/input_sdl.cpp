@@ -52,7 +52,6 @@ InputDevice* find_gamepad(u32 gamepad_id)
     u32 gamepad_idx = 0;
     for (; gamepad_idx < N_SUPPORTED_GAMEPADS; gamepad_idx++)
     {
-        std::cout << "SEARCH " << gamepads[gamepad_idx].id << std::endl;
         if (gamepads[gamepad_idx].id == gamepad_id)
         {
             return gamepads + gamepad_idx;
@@ -135,7 +134,6 @@ InputDevice* get_active_input_device()
 
 void set_active_input_device(u32 device_id)
 {
-    std::cout << "SET to " << device_id << std::endl;
     if (device_id == KEYBOARD_DEVICE_ID)
     {
         active_input_device = &keyboard;
@@ -157,7 +155,6 @@ void set_active_input_device(u32 device_id)
 
 InputAction get_action_for_button(i32 code)
 {
-    std::cout << "Active device has id " << active_input_device->id << std::endl;
     for (u32 i = 0; i < InputAction_NInputActions; i++)
     {
         auto mapping = active_input_device->keymap.map + i;

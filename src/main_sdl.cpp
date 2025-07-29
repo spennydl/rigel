@@ -57,7 +57,8 @@ initialize_game_memory()
 
     memory.stage_arena = memory.ephemeral_arena.alloc_sub_arena(ONE_MB);
     memory.colliders_arena = memory.ephemeral_arena.alloc_sub_arena(1024);
-    memory.scratch_arena = memory.ephemeral_arena.alloc_sub_arena(2 * ONE_MB);
+    // TODO: this should be much bigger, ya?
+    memory.frame_temp_arena = memory.ephemeral_arena.alloc_sub_arena(2 * ONE_MB);
     memory.resource_arena = memory.ephemeral_arena.alloc_sub_arena(12 * ONE_MB);
     memory.gfx_arena = memory.ephemeral_arena.alloc_sub_arena(2 * ONE_KB);
     memory.debug_arena = memory.ephemeral_arena.alloc_sub_arena(1 * ONE_MB);
@@ -68,7 +69,7 @@ initialize_game_memory()
 
     std::cout << "stage: " << (mem_ptr*)memory.stage_arena.mem_begin << " for " << memory.stage_arena.arena_bytes << " bytes" << std::endl;
     std::cout << "colliders: " << (mem_ptr*)memory.colliders_arena.mem_begin << " for " << memory.colliders_arena.arena_bytes << " bytes" << std::endl;
-    std::cout << "scratch: " << (mem_ptr*)memory.scratch_arena.mem_begin << " for " << memory.scratch_arena.arena_bytes << " bytes" << std::endl;
+    std::cout << "scratch: " << (mem_ptr*)memory.frame_temp_arena.mem_begin << " for " << memory.frame_temp_arena.arena_bytes << " bytes" << std::endl;
     std::cout << "resource: " << (mem_ptr*)memory.resource_arena.mem_begin << " for " << memory.resource_arena.arena_bytes << " bytes" << std::endl;
     std::cout << "gfx: " << (mem_ptr*)memory.gfx_arena.mem_begin << " for " << memory.gfx_arena.arena_bytes << " bytes" << std::endl;
     std::cout << "debug: " << (mem_ptr*)memory.debug_arena.mem_begin << " for " << memory.debug_arena.arena_bytes << " bytes" << std::endl;
@@ -109,6 +110,7 @@ int main()
 
     render::initialize_renderer(&memory.gfx_arena, w, h);
 
+    memory.frame_temp_arena.reinit_zeroed();
     GameState* game_state = load_game(memory);
 
     render::Viewport viewport;
@@ -129,7 +131,8 @@ int main()
     }
 
     while (running) {
-        memory.scratch_arena.reinit();
+
+        render::BatchBuffer* entity_batch_buffer = render::make_batch_buffer(&memory.frame_temp_arena, 128);
 
         while (SDL_PollEvent(&event)) {
             // quick and dirty for now
@@ -140,7 +143,6 @@ int main()
                 break;
                 case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
                 {
-                    std::cout << "SDL_EVENT_GAMEPAD_BUTTON_DOWN" << std::endl;
                     SDL_GamepadButtonEvent gbutton = event.gbutton;
 
                     if (get_active_input_device()->id != gbutton.which)
@@ -172,7 +174,6 @@ int main()
                 } break;
                 case SDL_EVENT_GAMEPAD_BUTTON_UP:
                 {
-                    std::cout << "SDL_EVENT_GAMEPAD_BUTTON_UP" << std::endl;
                     SDL_GamepadButtonEvent gbutton = event.gbutton;
 
                     if (get_active_input_device()->id != gbutton.which)
@@ -204,7 +205,6 @@ int main()
 
                 } break;
                 case SDL_EVENT_KEY_DOWN: {
-                    std::cout << "SDL_EVENT_KEY_DOWN" << std::endl;
                     SDL_KeyboardEvent key_event = event.key;
                     if (key_event.repeat) {
                         continue;
@@ -240,7 +240,6 @@ int main()
                 break;
                 case SDL_EVENT_KEY_UP:
                 {
-                    std::cout << "SDL_EVENT_KEY_UP" << std::endl;
                     SDL_KeyboardEvent key_event = event.key;
 
                     if (get_active_input_device()->id != KEYBOARD_DEVICE_ID)
@@ -255,7 +254,6 @@ int main()
                         {
                             case InputAction_MoveRight:
                             {
-                                std::cout << "NO move right" << std::endl;
                                 g_input_state.move_right_requested = false;
                             } break;
                             case InputAction_MoveLeft:
@@ -295,27 +293,24 @@ int main()
 //
             //debug::push_debug_line(line);
 #endif
-            while (delta_update_time > 0) {
+            //while (delta_update_time > 0) {
                 f32 dt = delta_update_time / 1000000000.0f; // to seconds
 
-                simulate_one_tick(memory, game_state, dt);
+                simulate_one_tick(memory, game_state, dt, entity_batch_buffer);
 
                 update_animations(game_state->active_world_chunk, dt);
 
                 delta_update_time -= UPDATE_TIME_NS;
-            }
+
+            //}
 
             SDL_GetCurrentTime(&last_update_time);
-        }
-
-        i64 delta_render_time = iter_time - last_render_time;
-        if (delta_render_time >= RENDER_TIME_NS) {
 
             auto world_chunk = game_state->active_world_chunk;
 
             render::begin_render(viewport, game_state, w, h);
 
-            render::lighting_pass(&memory.scratch_arena, world_chunk->active_map);
+            render::lighting_pass(&memory.frame_temp_arena, world_chunk->active_map);
 
             render::begin_render_to_internal_target();
 
@@ -328,13 +323,47 @@ int main()
             render::render_foreground_layer(viewport, world_chunk);
             render::render_decoration_layer(viewport, world_chunk);
 
+            render::submit_batch(entity_batch_buffer, &memory.frame_temp_arena);
+
             render::end_render_to_target();
 
             render::end_render();
 
             SDL_GL_SwapWindow(window);
-            SDL_GetCurrentTime(&last_render_time);
+
+            memory.frame_temp_arena.reinit();
         }
+
+        //std::cout << "Here we have " << entity_batch_buffer->items_in_buffer << std::endl;
+        //i64 delta_render_time = iter_time - last_render_time;
+        //if (delta_render_time >= RENDER_TIME_NS) {
+//
+            //auto world_chunk = game_state->active_world_chunk;
+//
+            //render::begin_render(viewport, game_state, w, h);
+//
+            //render::lighting_pass(&memory.frame_temp_arena, world_chunk->active_map);
+//
+            //render::begin_render_to_internal_target();
+//
+            //render::render_background();
+//
+            //render::render_background_layer(viewport, world_chunk);
+//
+            //render::render_all_entities(viewport, world_chunk);
+//
+            //render::render_foreground_layer(viewport, world_chunk);
+            //render::render_decoration_layer(viewport, world_chunk);
+//
+            //render::submit_batch(entity_batch_buffer, &memory.frame_temp_arena);
+//
+            //render::end_render_to_target();
+//
+            //render::end_render();
+//
+            //SDL_GL_SwapWindow(window);
+            //SDL_GetCurrentTime(&last_render_time);
+        //}
 
     }
 

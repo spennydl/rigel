@@ -126,6 +126,26 @@ struct Vec4
 };
 
 inline std::ostream&
+operator<<(std::ostream& os, Vec2& v)
+{
+    for (int i = 0; i < 2; i++)
+    {
+        os << v.xy[i] << "  ";
+    }
+    return os;
+}
+
+inline std::ostream&
+operator<<(std::ostream& os, Vec3& v)
+{
+    for (int i = 0; i < 3; i++)
+    {
+        os << v.xyz[i] << "  ";
+    }
+    return os;
+}
+
+inline std::ostream&
 operator<<(std::ostream& os, Vec4& v)
 {
     for (int i = 0; i < 4; i++)
@@ -193,10 +213,13 @@ transpose(const Mat4& m)
 inline std::ostream&
 operator<<(std::ostream& os, Mat4& mat)
 {
-    Mat4 row_wise = transpose(mat);
-    for (int i = 0; i < 4; i++)
+    for (int m = 0; m < 4; m++)
     {
-        os << row_wise.cols[i] << std::endl;
+        for (int n = 0; n < 4; n++)
+        {
+            os << mat[n][m] << " ";
+        }
+        os << std::endl;
     }
     return os;
 }

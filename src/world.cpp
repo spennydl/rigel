@@ -42,7 +42,7 @@ load_world_chunk(mem::GameMem& mem, const char* file_path)
     mem::Arena tilemap_arena = mem.stage_arena.alloc_sub_arena(18 * ONE_KB);
 
     TextResource world_data = load_text_resource(file_path);
-    auto root_obj_v = parse_json_string(&mem.scratch_arena, world_data.text);
+    auto root_obj_v = parse_json_string(&mem.frame_temp_arena, world_data.text);
     assert(root_obj_v->type == JSON_OBJECT && "expect an object at root");
     auto root = root_obj_v->object;
 

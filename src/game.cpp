@@ -89,7 +89,7 @@ void
 load_entity_prototypes(mem::GameMem& memory, const char* filepath)
 {
     TextResource entity_protos = load_text_resource(filepath);
-    auto root_v = parse_json_string(&memory.scratch_arena, entity_protos.text);
+    auto root_v = parse_json_string(&memory.frame_temp_arena, entity_protos.text);
     assert(root_v->type == JSON_OBJECT && "couldn't parse entity protos");
     auto root = root_v->object;
     char path_buf[256];
@@ -110,12 +110,12 @@ load_entity_prototypes(mem::GameMem& memory, const char* filepath)
         auto entity_sprite_info = jsonobj_get(obj, "sprite_info", 11);
         json_str_copy(sprite_info_buf, entity_sprite_info->string);
 
-        auto checkpoint = memory.scratch_arena.checkpoint();
-        auto arena = memory.scratch_arena.alloc_sub_arena(64 * ONE_PAGE);
+        auto checkpoint = memory.frame_temp_arena.checkpoint();
+        auto arena = memory.frame_temp_arena.alloc_sub_arena(64 * ONE_PAGE);
         std::cout << "Loading info from '" << sprite_info_buf << "'" << std::endl;
         auto anim = get_or_load_anim_resource(&arena, sprite_info_buf);
 
-        memory.scratch_arena.restore_zeroed(checkpoint);
+        memory.frame_temp_arena.restore_zeroed(checkpoint);
 
         auto entity_sprite = jsonobj_get(obj, "spritesheet", 11);
         json_str_copy(path_buf, entity_sprite->string);
@@ -129,6 +129,7 @@ load_entity_prototypes(mem::GameMem& memory, const char* filepath)
         entity_proto->spritesheet = resource;
         entity_proto->animation_id = anim->id;
         entity_proto->collider_dims = entity_collider;
+
     }
 }
 
@@ -140,7 +141,6 @@ WorldChunk* load_all_world_chunks(mem::GameMem& memory)
     WorldChunk* starting_chunk = load_world_chunk(memory, "resource/map/testoutdoor.tmj");
     starting_chunk->level_index = 0;
 
-    memory.scratch_arena.reinit_zeroed();
     WorldChunk* other_chunk = load_world_chunk(memory, "resource/map/next.tmj");
     other_chunk->level_index = 1;
 
@@ -167,7 +167,7 @@ void switch_world_chunk(mem::GameMem& mem, GameState* state, i32 index)
     other_player->facing_dir = player->facing_dir;
 
     state->active_world_chunk = next_chunk;
-    render::make_world_chunk_renderable(&mem.scratch_arena, next_chunk);
+    render::make_world_chunk_renderable(&mem.frame_temp_arena, next_chunk);
 }
 
 GameState*
@@ -180,7 +180,7 @@ load_game(mem::GameMem& memory)
     result->first_world_chunk = load_all_world_chunks(memory);
     result->active_world_chunk = result->first_world_chunk;
 
-    render::make_world_chunk_renderable(&memory.scratch_arena, result->active_world_chunk);
+    render::make_world_chunk_renderable(&memory.frame_temp_arena, result->active_world_chunk);
 
     return result;
 }
@@ -189,7 +189,7 @@ load_game(mem::GameMem& memory)
 int level_index = 0;
 
 void
-simulate_one_tick(mem::GameMem& memory, GameState* game_state, f32 dt)
+simulate_one_tick(mem::GameMem& memory, GameState* game_state, f32 dt, render::BatchBuffer* entity_batch_buffer)
 {
     auto world_chunk = game_state->active_world_chunk;
 
@@ -311,6 +311,12 @@ simulate_one_tick(mem::GameMem& memory, GameState* game_state, f32 dt)
                 }
 
                 update_zero_cross_trigger(&entity->facing_dir, entity->velocity.x);
+
+                auto player_rect = render::push_render_item<render::RectangleItem>(entity_batch_buffer);
+                player_rect->min = entity->position;
+                player_rect->max = entity->position + (2 * entity->colliders->aabbs[0].extents);
+                player_rect->color = {0, 1, 0, 1};
+
             } break;
             case EntityType_Bumpngo:
             {

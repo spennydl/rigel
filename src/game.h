@@ -4,6 +4,7 @@
 #include "rigel.h"
 #include "entity.h"
 #include "mem.h"
+#include "render.h"
 
 namespace rigel {
 
@@ -34,7 +35,7 @@ switch_world_chunk(mem::GameMem& mem, GameState* state, i32 index);
 Direction
 check_for_level_change(Entity* player);
 void
-simulate_one_tick(mem::GameMem& memory, GameState* game_state, f32 dt);
+simulate_one_tick(mem::GameMem& memory, GameState* game_state, f32 dt, render::BatchBuffer* entity_batch_buffer);
 void
 update_animations(WorldChunk* active_chunk, f32 dt);
 

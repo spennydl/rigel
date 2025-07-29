@@ -5,7 +5,6 @@
 #include "resource.h"
 #include "collider.h"
 #include "world.h"
-#include "game.h"
 #include "rigelmath.h"
 
 #include <glad/glad.h>
@@ -13,6 +12,8 @@
 #include <string>
 
 namespace rigel {
+
+struct GameState;
 
 namespace render {
 
@@ -227,11 +228,13 @@ enum GameShaders {
     ENTITY_DRAW_SHADER,
     TILE_OCCLUDER_SHADER,
     BACKGROUND_GRADIENT_SHADER,
+    SIMPLE_RECTANGLE_SHADER,
 #ifdef RIGEL_DEBUG
     DEBUG_LINE_SHADER,
 #endif
     N_GAME_SHADERS
 };
+
 
 void initialize_renderer(mem::Arena* gfx_arena, f32 fb_width, f32 fb_height);
 
@@ -251,6 +254,114 @@ void end_render_to_target();
 void end_render();
 
 RenderTarget internal_target();
+
+// ------------------------------------
+
+enum RenderItemType
+{
+    RenderItemType_None = 0,
+    RenderItemType_Rectangle,
+    RenderItemType_ClearBufferCmd,
+    RenderItemType_NTypes
+};
+
+struct Item
+{
+    RenderItemType type;
+};
+
+struct RectangleItem
+{
+    RenderItemType type;
+
+    m::Vec3 min;
+    m::Vec3 max;
+    m::Vec4 color;
+};
+
+struct ClearBufferCmdItem
+{
+    RenderItemType type;
+
+    m::Vec4 clear_color;
+};
+
+struct BatchBuffer
+{
+    u32 quad_count;
+    u32 items_in_buffer;
+
+    u32 buffer_size;
+    u32 buffer_used;
+    ubyte* buffer;
+};
+
+struct VertexBuffer
+{
+    GLuint vao;
+    GLuint vbo;
+    GLuint ebo;
+};
+
+template <typename T>
+inline RenderItemType
+get_render_item_type_for()
+{
+    return RenderItemType_None;
+}
+
+template <>
+inline RenderItemType
+get_render_item_type_for<RectangleItem>()
+{
+    return RenderItemType_Rectangle;
+}
+
+template <>
+inline RenderItemType
+get_render_item_type_for<ClearBufferCmdItem>()
+{
+    return RenderItemType_ClearBufferCmd;
+}
+
+BatchBuffer*
+make_batch_buffer(mem::Arena* target_arena, u32 size_in_bytes = 1024);
+
+void
+submit_batch(BatchBuffer* batch, mem::Arena* temp_arena);
+
+template<typename T, typename U>
+struct is_same
+{
+    static constexpr i32 value = false;
+};
+
+template<typename T>
+struct is_same<T, T>
+{
+    static constexpr i32 value = true;
+};
+
+template <typename T>
+T*
+push_render_item(BatchBuffer* buffer)
+{
+    assert(buffer->buffer_used + sizeof(T) < buffer->buffer_size);
+
+    auto ptr = buffer->buffer + buffer->buffer_used;
+    T* result = new (ptr) T();
+    result->type = get_render_item_type_for<T>();
+
+    buffer->buffer_used += sizeof(T);
+    buffer->items_in_buffer += 1;
+
+    if constexpr (is_same<T, RectangleItem>::value)
+    {
+        buffer->quad_count += 1;
+    }
+
+    return result;
+}
 
 } // namespace render
 
