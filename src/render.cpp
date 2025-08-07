@@ -1538,10 +1538,11 @@ sprite_to_verts(mem::SimpleList<SpriteBufferVertex>* verts, mem::SimpleList<u32>
     auto sprite = atlas_get_sprite(&render_state.sprite_atlas, sprite_item->sprite_id);
     if (sprite)
     {
-        world_max.x = sprite_item->position.x + sprite->dimensions.x;
-        world_max.y = sprite_item->position.y + sprite->dimensions.y;
-        atlas_min = sprite->atlas_min;
-        atlas_max = sprite->atlas_max;
+        auto dims = m::abs(sprite_item->sprite_segment_max - sprite_item->sprite_segment_min);
+        world_max.x = sprite_item->position.x + dims.x;
+        world_max.y = sprite_item->position.y + dims.y;
+        atlas_min = sprite->atlas_min + sprite_item->sprite_segment_min;
+        atlas_max = sprite->atlas_min + sprite_item->sprite_segment_max;
     }
 
     // TODO(spencer): we need to be z-sorting here

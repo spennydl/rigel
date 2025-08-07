@@ -18,7 +18,7 @@ entity_set_animation(Entity* entity, const char* anim_name)
     entity->animation.current_frame = animation->start_frame;
     entity->animation.end_frame = animation->end_frame;
     entity->animation.timer = 0.0f;
-    entity->animation.threshold = animation->ms_per_frame / 1000.0f;
+    entity->animation.threshold = animations->frames[0].duration_ms / 1000.0f;
 
     entity->current_animation = anim_name;
 }

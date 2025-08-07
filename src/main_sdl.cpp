@@ -144,9 +144,10 @@ int main()
     while (running) {
 
         render::BatchBuffer* entity_batch_buffer = render::make_batch_buffer(&memory.frame_temp_arena, 128);
-        auto rect_shader = render::game_shaders + render::SIMPLE_RECTANGLE_SHADER;
+        auto rect_shader = render::game_shaders + render::SIMPLE_SPRITE_SHADER;
         auto shader_item = render::push_render_item<render::UseShaderCmdItem>(entity_batch_buffer);
         shader_item->shader = rect_shader;
+        shader_set_uniform_1i(rect_shader, "sprite_atlas", 1);
 
         while (SDL_PollEvent(&event)) {
             // quick and dirty for now
@@ -344,12 +345,11 @@ int main()
             render::end_render();
 
             // use sprite shader
-            auto other_batch = render::make_batch_buffer(&memory.frame_temp_arena, 64);
+            auto other_batch = render::make_batch_buffer(&memory.frame_temp_arena, 128);
             auto sprite_shader = render::game_shaders + render::SIMPLE_SPRITE_SHADER;
             auto sprite_shader_item = render::push_render_item<render::UseShaderCmdItem>(other_batch);
             sprite_shader_item->shader = sprite_shader;
             // a test
-            shader_set_uniform_1i(sprite_shader, "sprite_atlas", 1);
 
             // draw sprite
             auto sprite_render = render::push_render_item<render::SpriteItem>(other_batch);

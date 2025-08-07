@@ -31,6 +31,7 @@ resource_initialize(mem::Arena& resource_arena)
 
     resource_lookup->text_storage = resource_arena.alloc_sub_arena(1024 * ONE_KB);
     resource_lookup->image_storage = resource_arena.alloc_sub_arena(10 * ONE_MB);
+    resource_lookup->frame_storage = resource_arena.alloc_sub_arena(ONE_KB);
 }
 
 TextResource
@@ -176,9 +177,39 @@ AnimationResource* load_anim_resource(mem::Arena* scratch_arena, const char* fil
     resource_lookup->next_free_anim_id++;
 
     auto root = root_v->object;
+
+    auto frames = jsonobj_get(root, "frames", 6);
+    auto head_frame = frames->obj_array;
+    u32 count = 0;
+    while (head_frame)
+    {
+        count++;
+        head_frame = head_frame->next;
+    }
+    auto frame_store = resource_lookup->frame_storage.alloc_array<Frame>(count);
+    resource->frames = frame_store;
+    resource->n_frames = count;
+
+    u32 frame_i = 0;
+    for (head_frame = frames->obj_array;
+        head_frame;
+        head_frame = head_frame->next)
+    {
+        auto obj = head_frame->obj;
+        auto new_frame = frame_store + frame_i;
+
+        auto frame_obj = jsonobj_get(obj, "frame", 5)->object;
+        new_frame->spritesheet_min.x = jsonobj_get(frame_obj, "x", 1)->number->value;
+        new_frame->spritesheet_min.y = jsonobj_get(frame_obj, "y", 1)->number->value;
+        new_frame->spritesheet_max.x = new_frame->spritesheet_min.x + jsonobj_get(frame_obj, "w", 1)->number->value;
+        new_frame->spritesheet_max.y = new_frame->spritesheet_min.y + jsonobj_get(frame_obj, "h", 1)->number->value;
+        
+        new_frame->duration_ms = jsonobj_get(obj, "duration", 8)->number->value;
+        frame_i++;
+    }
+
     auto meta_obj = jsonobj_get(root, "meta", 4)->object;
     auto animations = jsonobj_get(meta_obj, "frameTags", 9);
-    auto frames = jsonobj_get(root, "frames", 6)->obj_array;
 
     auto head = animations->obj_array;
     while (head)
@@ -195,25 +226,11 @@ AnimationResource* load_anim_resource(mem::Arena* scratch_arena, const char* fil
         animation.start_frame = jsonobj_get(head->obj, "from", 4)->number->value;
         animation.end_frame = jsonobj_get(head->obj, "to", 2)->number->value + 1; // store half-open
 
-        auto frames_head = frames;
-        i32 n = animation.start_frame;
-        while (n--)
-        {
-            frames_head = frames_head->next;
-        }
-        animation.ms_per_frame = jsonobj_get(frames_head->obj, "duration", 8)->number->value;
-
         resource->animations.add(resource_key, animation);
 
         head = head->next;
     }
 
-    auto frames_head = frames;
-    while (frames_head)
-    {
-        resource->n_frames++;
-        frames_head = frames_head->next;
-    }
 
     usize key_len = strlen(file_path) + 1;
     char* resource_key = reinterpret_cast<char*>(resource_lookup->text_storage.alloc_bytes(key_len));

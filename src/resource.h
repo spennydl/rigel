@@ -93,8 +93,9 @@ struct ImageResource {
 
 struct Frame
 {
-    m::Vec2 min;
-    m::Vec2 max;
+    m::Vec2 spritesheet_min;
+    m::Vec2 spritesheet_max;
+    f32 duration_ms;
 };
 
 // TODO(spencer): This has to change from a frame number to a frame area
@@ -103,17 +104,15 @@ struct Animation
     char name[32];
     usize start_frame;
     usize end_frame;
-    usize ms_per_frame;
-
-    // TODO(spencer) see above, do this
-    // Frame* start_frame;
-    // Frame* end_frame;
 };
 
 struct AnimationResource
 {
     ResourceId id;
-    usize n_frames;
+
+    u32 n_frames;
+    Frame *frames;
+
     // TODO(spencer): This kinda sucks, but it might be what I want?
     StringKeyedMap<Animation, MAX_ANIMATIONS> animations;
 };
@@ -134,6 +133,7 @@ struct ResourceLookup {
 
     mem::Arena text_storage;
     mem::Arena image_storage;
+    mem::Arena frame_storage;
 };
 
 void resource_initialize(mem::Arena& resource_arena);

@@ -572,6 +572,12 @@ abs(f32 val)
     return val * signof(val);
 }
 
+inline Vec2
+abs(Vec2 val)
+{
+    return Vec2 {abs(val.x), abs(val.y)};
+}
+
 inline f32
 floor(f32 val)
 {

@@ -367,6 +367,8 @@ struct SpriteItem
     SpriteId sprite_id;
     m::Vec4 color_and_strength;
     m::Vec3 position;
+    m::Vec2 sprite_segment_min;
+    m::Vec2 sprite_segment_max;
 };
 
 struct BatchBuffer
