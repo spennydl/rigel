@@ -63,12 +63,13 @@ class Viewport
 struct Shader
 {
     GLuint id;
-
-    Shader();
-    Shader(const char* vs_src, const char* fs_src);
-
-    void load_from_src(const char* vs_src, const char* fs_src);
 };
+void 
+shader_load_from_src(Shader* shader, const char* vs_src, const char* fs_src);
+void
+shader_set_uniform_m4v(Shader* shader, const char* name, m::Mat4 mat);
+void
+shader_set_uniform_1i(Shader* shader, const char* name, i32 value);
 bool
 check_shader_status(GLuint id, bool prog = false);
 
@@ -204,7 +205,7 @@ struct RenderTarget
     Texture target_texture;
 };
 
-RenderTarget create_new_render_target();
+RenderTarget* get_default_render_target();
 
 // TODO
 struct UniformLight
@@ -229,12 +230,14 @@ enum GameShaders {
     TILE_OCCLUDER_SHADER,
     BACKGROUND_GRADIENT_SHADER,
     SIMPLE_RECTANGLE_SHADER,
+    SIMPLE_SPRITE_SHADER,
 #ifdef RIGEL_DEBUG
     DEBUG_LINE_SHADER,
 #endif
     N_GAME_SHADERS
 };
 
+extern Shader game_shaders[N_GAME_SHADERS];
 
 void initialize_renderer(mem::Arena* gfx_arena, f32 fb_width, f32 fb_height);
 
@@ -257,11 +260,68 @@ RenderTarget internal_target();
 
 // ------------------------------------
 
+#define MAX_SPRITES 128
+
+struct ImageData
+{
+    m::Vec2 dimensions;
+    ubyte* data;
+};
+
+typedef i32 SpriteId;
+
+struct Sprite
+{
+    SpriteId id;
+    m::Vec2 atlas_min;
+    m::Vec2 atlas_max;
+    m::Vec2 dimensions;
+    ubyte* data;
+};
+
+struct SpriteAtlas
+{
+    Texture texture;
+    b32 needs_rebuffer;
+    SpriteId next_free_sprite_id;
+    Sprite sprites[MAX_SPRITES];
+};
+
+SpriteId
+atlas_push_sprite(SpriteAtlas* atlas, u32 width, u32 height, ubyte* data);
+void
+atlas_rebuffer(SpriteAtlas* atlas, mem::Arena* tmp_arena);
+Sprite*
+atlas_get_sprite(SpriteAtlas* atlas, SpriteId sprite_id);
+
+SpriteId
+default_atlas_push_sprite(u32 width, u32 height, ubyte* data);
+void
+default_atlas_rebuffer(mem::Arena* tmp_arena);
+
+
+// TODO(spencer): this new strategy means that I need
+// two layers to the renderer: one that is the lowest-level
+// operations (below), and another that sits on top and
+// implements the actual rendering pipeline for the
+// game.
+//
+// I suppose this is the point of all of this work. We're decoupling
+// rendering from the game.
+
+#define RENDER_ITEM_LIST \
+    X(Rectangle) \
+    X(ClearBufferCmd) \
+    X(SwitchTargetCmd) \
+    X(UseShaderCmd) \
+    X(Sprite)
+
 enum RenderItemType
 {
     RenderItemType_None = 0,
-    RenderItemType_Rectangle,
-    RenderItemType_ClearBufferCmd,
+    #define X(ItemName) RenderItemType_##ItemName,
+    RENDER_ITEM_LIST
+    #undef X
     RenderItemType_NTypes
 };
 
@@ -276,7 +336,7 @@ struct RectangleItem
 
     m::Vec3 min;
     m::Vec3 max;
-    m::Vec4 color;
+    m::Vec4 color_and_strength;
 };
 
 struct ClearBufferCmdItem
@@ -284,6 +344,29 @@ struct ClearBufferCmdItem
     RenderItemType type;
 
     m::Vec4 clear_color;
+    b32 clear_depth;
+};
+
+struct SwitchTargetCmdItem
+{
+    RenderItemType type;
+
+    RenderTarget* target;
+};
+
+struct UseShaderCmdItem
+{
+    RenderItemType type;
+
+    Shader* shader;
+};
+
+struct SpriteItem
+{
+    RenderItemType type;
+    SpriteId sprite_id;
+    m::Vec4 color_and_strength;
+    m::Vec3 position;
 };
 
 struct BatchBuffer
@@ -310,19 +393,17 @@ get_render_item_type_for()
     return RenderItemType_None;
 }
 
-template <>
-inline RenderItemType
-get_render_item_type_for<RectangleItem>()
-{
-    return RenderItemType_Rectangle;
+#define X(ItemName) \
+template <> \
+inline RenderItemType \
+get_render_item_type_for<ItemName##Item>() \
+{ \
+    return RenderItemType_##ItemName; \
 }
 
-template <>
-inline RenderItemType
-get_render_item_type_for<ClearBufferCmdItem>()
-{
-    return RenderItemType_ClearBufferCmd;
-}
+RENDER_ITEM_LIST
+
+#undef X
 
 BatchBuffer*
 make_batch_buffer(mem::Arena* target_arena, u32 size_in_bytes = 1024);
@@ -331,6 +412,7 @@ void
 submit_batch(BatchBuffer* batch, mem::Arena* temp_arena);
 
 template<typename T, typename U>
+
 struct is_same
 {
     static constexpr i32 value = false;
@@ -338,6 +420,24 @@ struct is_same
 
 template<typename T>
 struct is_same<T, T>
+{
+    static constexpr i32 value = true;
+};
+
+template<typename T>
+struct is_quad_like
+{
+    static constexpr i32 value = false;
+};
+
+template<>
+struct is_quad_like<RectangleItem>
+{
+    static constexpr i32 value = true;
+};
+
+template<>
+struct is_quad_like<SpriteItem>
 {
     static constexpr i32 value = true;
 };
@@ -355,7 +455,7 @@ push_render_item(BatchBuffer* buffer)
     buffer->buffer_used += sizeof(T);
     buffer->items_in_buffer += 1;
 
-    if constexpr (is_same<T, RectangleItem>::value)
+    if constexpr (is_quad_like<T>::value)
     {
         buffer->quad_count += 1;
     }

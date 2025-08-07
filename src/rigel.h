@@ -23,6 +23,8 @@ typedef int32_t isize;
 typedef uint64_t big_usize;
 typedef int64_t big_isize;
 
+typedef int32_t b32;
+
 typedef float f32;
 // is this a hack?
 #define F32_INF (1.0f / 0.0)

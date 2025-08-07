@@ -1,4 +1,5 @@
 #include "rigel.h"
+#include "render.h"
 #include "game.h"
 #include "resource.h"
 #include "json.h"
@@ -129,6 +130,7 @@ load_entity_prototypes(mem::GameMem& memory, const char* filepath)
         entity_proto->spritesheet = resource;
         entity_proto->animation_id = anim->id;
         entity_proto->collider_dims = entity_collider;
+        entity_proto->new_sprite_id = render::default_atlas_push_sprite(resource.width, resource.height, resource.data);
 
     }
 }
@@ -315,7 +317,12 @@ simulate_one_tick(mem::GameMem& memory, GameState* game_state, f32 dt, render::B
                 auto player_rect = render::push_render_item<render::RectangleItem>(entity_batch_buffer);
                 player_rect->min = entity->position;
                 player_rect->max = entity->position + (2 * entity->colliders->aabbs[0].extents);
-                player_rect->color = {0, 1, 0, 1};
+                player_rect->color_and_strength = {1, 1, 0, 1};
+
+                auto other_rect = render::push_render_item<render::RectangleItem>(entity_batch_buffer);
+                other_rect->min = entity->position + m::Vec3 { 10, 10, 0 };
+                other_rect->max = entity->position + (2 * entity->colliders->aabbs[0].extents) + m::Vec3 { 10, 10, 0 };
+                other_rect->color_and_strength = {0, 1, 1, 1};
 
             } break;
             case EntityType_Bumpngo:

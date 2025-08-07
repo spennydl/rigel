@@ -33,4 +33,34 @@ ubyte* slurp_into_mem(mem::Arena* dest, const char* file_name)
     return buffer;
 }
 
+namespace fs
+{
+
+Directory 
+open_dir(const char* dir)
+{
+    DIR* d = opendir(dir);
+    return Directory { d };
+}
+
+b32 
+extension_equals(const char* filename, const char* ext)
+{
+    auto occ = strrchr(filename, '.');
+    
+    if (!occ || occ == filename) {
+        return false;
+    }
+
+    if (strncmp(occ + 1, ext, 5) == 0)
+    {
+        return true;
+    }
+    return false;
+}
+
+
+}
+
+
 } // namespace rigel

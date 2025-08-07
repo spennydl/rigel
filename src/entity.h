@@ -84,6 +84,7 @@ struct Entity
     EntityId id;
     EntityType type;
     ResourceId sprite_id;
+    i32 new_sprite_id;
 
     // sooo we have these state flags which means that an
     // entity can be in more than one state at a time. I think
@@ -156,9 +157,12 @@ inline bool state_transition_fall_exclusive(Entity* e)
     return true;
 }
 
+
+
 struct EntityPrototype
 {
     ImageResource spritesheet;
+    i32 new_sprite_id;
     ResourceId animation_id;
     Rectangle collider_dims;
 };

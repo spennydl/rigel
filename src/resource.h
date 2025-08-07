@@ -82,6 +82,7 @@ struct TextResource {
 
 struct ImageResource {
     ResourceId resource_id;
+    m::Vec2 atlas_coords;
     usize width;
     usize height;
     usize channels;
@@ -90,12 +91,23 @@ struct ImageResource {
     ubyte* data;
 };
 
+struct Frame
+{
+    m::Vec2 min;
+    m::Vec2 max;
+};
+
+// TODO(spencer): This has to change from a frame number to a frame area
 struct Animation
 {
     char name[32];
     usize start_frame;
     usize end_frame;
     usize ms_per_frame;
+
+    // TODO(spencer) see above, do this
+    // Frame* start_frame;
+    // Frame* end_frame;
 };
 
 struct AnimationResource

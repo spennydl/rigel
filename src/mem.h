@@ -145,6 +145,49 @@ struct GameMem
     Arena debug_arena;
 };
 
+template <typename T>
+struct SimpleList
+{
+    usize length;
+    usize capacity;
+    T* items;
+};
+
+template <typename T>
+SimpleList<T>
+make_simple_list(usize capacity, mem::Arena* arena)
+{
+    auto items = arena->alloc_array<T>(capacity);
+    return SimpleList { .length = 0, .capacity = capacity, .items = items };
+}
+
+template <typename T>
+T*
+simple_list_append_new(SimpleList<T>* list)
+{
+    list->length += 1;
+    assert(list->length <= list->capacity && "List overflow");
+
+    return list->items + list->length - 1;
+}
+
+template <typename T>
+T*
+simple_list_append(SimpleList<T>* list, T item)
+{
+    auto result = simple_list_append_new(list);
+    *result = item;
+    return result;
+}
+
+template <typename T>
+T*
+simple_list_insert(SimpleList<T>* list, T item, usize index)
+{
+    // TODO(spencer): need this for sorting
+    return nullptr;
+}
+
 } // namespace mem
 } // namespace rigel
 

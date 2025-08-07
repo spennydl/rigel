@@ -4,6 +4,10 @@
 #include "rigelmath.h"
 #include "debug.h"
 #include "game.h"
+#include "fs_linux.h"
+#include "mem.h"
+// TODO: snprintf is dumbo
+#include <stdio.h>
 #include <glad/glad.h>
 
 // TODO: remove
@@ -16,17 +20,21 @@
 namespace rigel {
 namespace render {
 
-static Shader game_shaders[N_GAME_SHADERS];
+Shader game_shaders[N_GAME_SHADERS];
 
 struct RenderState
 {
     mem::Arena* gfx_arena;
 
-    VertexBuffer sprite_buffer;
     RenderTarget internal_target;
     RenderTarget screen_target;
     RenderTarget shadowmap_target;
     GpuQuad screen;
+
+    // new renderer stuff
+    VertexBuffer sprite_buffer;
+    SpriteAtlas sprite_atlas;
+    Shader* active_shader;
 
     Rectangle current_viewport;
     // TODO: just a test
@@ -71,10 +79,8 @@ check_shader_status(GLuint id, bool prog)
     return success;
 }
 
-Shader::Shader() {}
-
 void
-Shader::load_from_src(const char* vs_src, const char* fs_src)
+shader_load_from_src(Shader* shader, const char* vs_src, const char* fs_src)
 {
     GLuint vs, fs;
     vs = glCreateShader(GL_VERTEX_SHADER);
@@ -94,33 +100,33 @@ Shader::load_from_src(const char* vs_src, const char* fs_src)
         return;
     }
 
-    this->id = glCreateProgram();
-    glAttachShader(this->id, vs);
-    glAttachShader(this->id, fs);
-    glLinkProgram(this->id);
-    if (!check_shader_status(this->id, true)) {
+    shader->id = glCreateProgram();
+    glAttachShader(shader->id, vs);
+    glAttachShader(shader->id, fs);
+    glLinkProgram(shader->id);
+    if (!check_shader_status(shader->id, true)) {
         std::cerr << "link failed" << std::endl;
     }
 
-    u32 uniform_block = glGetUniformBlockIndex(this->id, "GlobalUniforms");
-    glUniformBlockBinding(this->id, uniform_block, 0);
+    u32 uniform_block = glGetUniformBlockIndex(shader->id, "GlobalUniforms");
+    glUniformBlockBinding(shader->id, uniform_block, 0);
 }
 
-Shader::Shader(const char* vs_src, const char* fs_src)
+void
+shader_set_uniform_m4v(Shader* shader, const char* name, m::Mat4 mat)
 {
-    load_from_src(vs_src, fs_src);
+    glUseProgram(shader->id);
+    glUniformMatrix4fv(glGetUniformLocation(shader->id, name), 1, GL_FALSE, reinterpret_cast<f32*>(&mat));
 }
 
-// TODO: Batching!
-// We need to generate a single VBO containing all of the tiles to render.
-// Might have to go back to using a single atlas image instead of a 2D array
-// texture?
+void
+shader_set_uniform_1i(Shader* shader, const char* name, i32 value)
+{
+    glUseProgram(shader->id);
+    glUniform1i(glGetUniformLocation(shader->id, name), value);
+}
 
-// TODO: Tilemaps will never change. Why store them like I do? Why not store the geometry
-// we make here instead?
-//
-// On second thought we absolutely need them in a grid format for spatial queries. Still,
-// might be nice to keep some around.
+// TODO(spencer): does this fit with the new renderer?
 BatchedTileRenderer::BatchedTileRenderer(mem::Arena& scratch_arena, TileMap* tilemap, ImageResource atlas_image)
     : vao(0), n_tiles(tilemap->n_nonempty_tiles)
 {
@@ -213,12 +219,6 @@ BatchedTileRenderer::BatchedTileRenderer(mem::Arena& scratch_arena, TileMap* til
     tile_sheet = atlas_image.resource_id;
 }
 
-// TODO:
-// I have yet to come up with a consistent "render" function interface.
-// Do I pass shaders? Or do I have some immediate-mode api thru which I can
-// use and set uniforms? Or option C? Dunno what is better.
-//
-// For now I'm doing this
 void BatchedTileRenderer::render(Viewport& viewport, Shader shader)
 {
     glEnable(GL_BLEND);
@@ -493,7 +493,7 @@ Shader* get_renderable_shader(TextResource vs_src, TextResource fs_src)
     usize next_idx = ready_shaders->next_free_shader_idx;
     assert(next_idx < 64 && "Too many shaders at once");
     Shader* result = ready_shaders->shaders + next_idx;
-    result->load_from_src(vs_src.text, fs_src.text);
+    shader_load_from_src(result, vs_src.text, fs_src.text);
 
     return result;
 }
@@ -564,41 +564,73 @@ const char* simple_rect_vs = R"SRC(
 #version 400 core
 layout (location = 0) in vec2 min_p;
 layout (location = 1) in vec2 max_p;
-flat out vec4 color;
+layout (location = 2) in vec4 color_and_strength;
+layout (location = 3) in vec2 atlas_min_p;
+layout (location = 4) in vec2 atlas_max_p;
+
+out vec4 color;
+out vec2 atlas_uv;
 
 uniform mat4 screen_transform;
 
 void main()
 {
     uint idx = gl_VertexID & 3;
-    vec4 vert_huh = mat4(
+    vec4 vert = mat4(
         vec4(min_p.x, min_p.y, 0, 1),
         vec4(max_p.x, min_p.y, 0, 1),
         vec4(max_p.x, max_p.y, 0, 1),
         vec4(min_p.x, max_p.y, 0, 1)
     )[idx];
 
-    vec4 vert = mat4(
-        vec4(0, 0, 0, 1),
-        vec4(100, 0, 0, 1),
-        vec4(100, 100, 0, 1),
-        vec4(0, 100, 0, 1)
-    )[idx];
+    /*
+    vec2 atlas_coord = mat4(
+        vec4(0, 0, 0, 0),
+        vec4(1, 0, 0, 0),
+        vec4(1, 1, 0, 0),
+        vec4(0, 1, 0, 0)
+    )[idx].xy;
+    */
+    vec2 atlas_coord = mat4(
+        vec4(atlas_min_p.x, atlas_max_p.y, 0, 0),
+        vec4(atlas_max_p.x, atlas_max_p.y, 0, 0),
+        vec4(atlas_max_p.x, atlas_min_p.y, 0, 0),
+        vec4(atlas_min_p.x, atlas_min_p.y, 0, 0)
+    )[idx].xy;
 
-    gl_Position = screen_transform * vert_huh;
+    gl_Position = screen_transform * vert;
 
-    color = screen_transform * vec4(vert_huh.xyz, 1);
+    color = color_and_strength;
+    // TODO(spencer): prolly shouldn't hard code this
+    atlas_uv = atlas_coord / 512.0f;
 })SRC";
 
 
 const char* simple_rect_fs = R"SRC(
 #version 400 core
-flat in vec4 color;
+in vec4 color;
+in vec2 atlas_uv;
 out vec4 FragColor;
 
 void main()
 {
-    FragColor = color;
+    FragColor = vec4(color.xyz * color.w, 1.0);
+})SRC";
+
+const char* simple_sprite_fs = R"SRC(
+#version 400 core
+in vec4 color;
+in vec2 atlas_uv;
+
+uniform sampler2D sprite_atlas;
+
+out vec4 FragColor;
+
+void main()
+{
+    vec4 sampl = texture(sprite_atlas, atlas_uv);
+    vec3 mixed_color = mix(sampl.rgb, color.rgb, color.a);
+    FragColor = vec4(mixed_color, sampl.a);
 })SRC";
 
 const char* screen_vs_src = R"SRC(
@@ -619,7 +651,7 @@ const char* screen_fs_src = R"SRC(
 in vec2 tex_uv;
 uniform sampler2D game;
 out vec4 FragColor;
-float dist[6] = float[](0.92, 0.96, 1.0, 1.0, 0.96, 0.92);
+float dist[6] = float[](0.82, 0.92, 1.0, 1.0, 0.92, 0.82);
 
 void main(){
     float y_pos = (tex_uv.y * 1080.0f);
@@ -634,7 +666,8 @@ void main(){
     vec4 center = texture(game, tex_uv);
     vec4 right_color = texture(game, right);
 
-    vec4 final = mult * vec4(left_color.r, center.g, right_color.b, center.a);
+    vec4 final = vec4(left_color.r, center.g, right_color.b, center.a);
+    final = vec4(mult * final.rgb, final.a);
 
     //float exposure = 0.3;
     //final.rgb = vec3(1.0) - exp(-final.rgb * exposure);
@@ -753,7 +786,7 @@ void render_debug_init(mem::Arena* gfx_arena)
     Shader* dbg_line_shader = &game_shaders[DEBUG_LINE_SHADER];
     TextResource dbg_line_vss = load_text_resource("resource/shader/vs_dbg_line.glsl");
     TextResource dbg_line_fss = load_text_resource("resource/shader/fs_dbg_line.glsl");
-    dbg_line_shader->load_from_src(dbg_line_vss.text, dbg_line_fss.text);
+    shader_load_from_src(dbg_line_shader, dbg_line_vss.text, dbg_line_fss.text);
 }
 
 void render_debug_lines()
@@ -782,6 +815,15 @@ void render_debug_lines()
 
 #endif
 
+struct SpriteBufferVertex
+{
+    m::Vec2 world_min;
+    m::Vec2 world_max;
+    m::Vec4 color_and_strength;
+    m::Vec2 atlas_min;
+    m::Vec2 atlas_max;
+};
+
 void initialize_renderer(mem::Arena* gfx_arena, f32 fb_width, f32 fb_height)
 {
     render_state.gfx_arena = gfx_arena;
@@ -793,6 +835,7 @@ void initialize_renderer(mem::Arena* gfx_arena, f32 fb_width, f32 fb_height)
     glBindBufferBase(GL_UNIFORM_BUFFER, 0, render_state.global_ubo);
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
+    // sprite buffer
     glGenVertexArrays(1, &render_state.sprite_buffer.vao);
     glGenBuffers(1, &render_state.sprite_buffer.vbo);
     glGenBuffers(1, &render_state.sprite_buffer.ebo);
@@ -803,15 +846,30 @@ void initialize_renderer(mem::Arena* gfx_arena, f32 fb_width, f32 fb_height)
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, render_state.sprite_buffer.ebo);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, 0, 0, GL_DYNAMIC_DRAW);
 
-    // for sprites we just have min and max in worldspace.
-    // we'll also need a sprite locator to pull bitmap data from an atlas
-    // but we're not there yet.
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+    // min & max
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(SpriteBufferVertex), (void*)0);
     glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(SpriteBufferVertex), (void*)offsetof(SpriteBufferVertex, world_max));
     glEnableVertexAttribArray(1);
+    // color: rgb + strength
+    glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, sizeof(SpriteBufferVertex), (void*)offsetof(SpriteBufferVertex, color_and_strength));
+    glEnableVertexAttribArray(2);
+    // atlas min & max
+    glVertexAttribPointer(3, 2, GL_FLOAT, GL_FALSE, sizeof(SpriteBufferVertex), (void*)offsetof(SpriteBufferVertex, atlas_min));
+    glEnableVertexAttribArray(3);
+    glVertexAttribPointer(4, 2, GL_FLOAT, GL_FALSE, sizeof(SpriteBufferVertex), (void*)offsetof(SpriteBufferVertex, atlas_max));
+    glEnableVertexAttribArray(4);
 
     glBindVertexArray(0);
+
+    TextureConfig sprite_atlas_cfg;
+    sprite_atlas_cfg.width = 512;
+    sprite_atlas_cfg.height = 512;
+    render_state.sprite_atlas.texture = make_texture(sprite_atlas_cfg);
+    render_state.sprite_atlas.needs_rebuffer = false;
+    render_state.sprite_atlas.next_free_sprite_id = 0;
+
+    render_state.active_shader = nullptr;
 
     render_state.internal_target = make_render_to_texture_target(320, 180);
 
@@ -823,28 +881,31 @@ void initialize_renderer(mem::Arena* gfx_arena, f32 fb_width, f32 fb_height)
 
     Shader* screen_shader = &game_shaders[SCREEN_SHADER];
     // TODO: use proper resources here
-    screen_shader->load_from_src(screen_vs_src, screen_fs_src);
+    shader_load_from_src(screen_shader, screen_vs_src, screen_fs_src);
 
     Shader* background_gradient_shader = &game_shaders[BACKGROUND_GRADIENT_SHADER];
-    background_gradient_shader->load_from_src(screen_vs_src, fs_gradient);
+    shader_load_from_src(background_gradient_shader, screen_vs_src, fs_gradient);
 
     Shader* map_shader = &game_shaders[TILEMAP_DRAW_SHADER];
     TextResource map_shader_vs = load_text_resource("resource/shader/vs_map_batched.glsl");
     TextResource map_shader_fs = load_text_resource("resource/shader/fs_map_batched.glsl");
-    map_shader->load_from_src(map_shader_vs.text, map_shader_fs.text);
+    shader_load_from_src(map_shader, map_shader_vs.text, map_shader_fs.text);
 
     Shader* entity_shader = &game_shaders[ENTITY_DRAW_SHADER];
     TextResource entity_shader_vs = load_text_resource("resource/shader/vs_entity.glsl");
     TextResource entity_shader_fs = load_text_resource("resource/shader/fs_entity.glsl");
-    entity_shader->load_from_src(entity_shader_vs.text, entity_shader_fs.text);
+    shader_load_from_src(entity_shader, entity_shader_vs.text, entity_shader_fs.text);
 
     Shader* shadow_shader = &game_shaders[TILE_OCCLUDER_SHADER];
     TextResource shadow_shader_vs = load_text_resource("resource/shader/vs_shadowmap.glsl");
     TextResource shadow_shader_fs = load_text_resource("resource/shader/fs_shadowmap.glsl");
-    shadow_shader->load_from_src(shadow_shader_vs.text, shadow_shader_fs.text);
+    shader_load_from_src(shadow_shader, shadow_shader_vs.text, shadow_shader_fs.text);
 
     Shader* simple_rect = &game_shaders[SIMPLE_RECTANGLE_SHADER];
-    simple_rect->load_from_src(simple_rect_vs, simple_rect_fs);
+    shader_load_from_src(simple_rect, simple_rect_vs, simple_rect_fs);
+
+    Shader* simple_sprite = &game_shaders[SIMPLE_SPRITE_SHADER];
+    shader_load_from_src(simple_sprite, simple_rect_vs, simple_sprite_fs);
 
     render_state.screen.initialize();
 
@@ -1194,7 +1255,6 @@ void begin_render_to_target(RenderTarget target)
     glClear(GL_COLOR_BUFFER_BIT);
 }
 
-
 void begin_render_to_internal_target()
 {
     begin_render_to_target(render_state.internal_target);
@@ -1250,6 +1310,7 @@ void end_render()
 
     glBindVertexArray(screen.vao);
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+    glBindTexture(GL_TEXTURE_2D, 0);
     glBindVertexArray(0);
 
 #ifdef RIGEL_DEBUG
@@ -1274,6 +1335,132 @@ void draw_rectangle(Rectangle rect, f32 r, f32 g, f32 b)
 
 // ------------------------------------
 
+SpriteId
+atlas_push_sprite(SpriteAtlas* atlas, u32 width, u32 height, ubyte* data)
+{
+    assert(atlas->next_free_sprite_id < MAX_SPRITES && "too many sprites");
+    SpriteId result_id = atlas->next_free_sprite_id;
+
+    Sprite* sprite = atlas->sprites + result_id;
+    sprite->id = result_id;
+    sprite->dimensions.x = width;
+    sprite->dimensions.y = height;
+    sprite->data = data;
+
+    atlas->next_free_sprite_id += 1;
+    atlas->needs_rebuffer = true;
+
+    return result_id;
+}
+
+void 
+atlas_rebuffer(SpriteAtlas* atlas, mem::Arena* temp_arena)
+{
+    auto first_sprite = atlas->sprites;
+    std::cout << "Buffering sprite " << first_sprite->id << " with dims " << first_sprite->dimensions << std::endl;
+    glBindTexture(GL_TEXTURE_2D, atlas->texture.id);
+    glTexSubImage2D(GL_TEXTURE_2D,
+        0,
+        0, 0, // x, y
+        first_sprite->dimensions.x, first_sprite->dimensions.y,
+        GL_RGBA,
+        GL_UNSIGNED_BYTE,
+        first_sprite->data);
+    first_sprite->atlas_min = {0, 0};
+    first_sprite->atlas_max = first_sprite->dimensions;
+
+    atlas->needs_rebuffer = false;
+    glBindTexture(GL_TEXTURE_2D, 0);
+    return;
+
+    Sprite* sorted = temp_arena->alloc_array<Sprite>(atlas->next_free_sprite_id);
+
+    auto swap_im = [](Sprite* l, Sprite* r)
+    {
+        Sprite* tmp = l;
+        *l = *r;
+        *r = *tmp;
+    };
+
+    for (i32 spritei = 0; spritei < atlas->next_free_sprite_id; spritei++)
+    {
+        Sprite sprite = atlas->sprites[spritei];
+
+        i32 insert;
+        for (insert = 0; insert <= spritei; insert++)
+        {
+            if (spritei == 0 || sorted[insert].dimensions.y <= sprite.dimensions.y)
+            {
+                break;
+            }
+        }
+
+        Sprite* old = sorted + insert;
+        swap_im(&sprite, old);
+
+        for (i32 i = insert + 1; i <= spritei; i++)
+        {
+            swap_im(&sprite, sorted + i);
+        }
+    }
+
+    u32 x = 0;
+    u32 y = 0;
+
+    i32 row_offset = atlas->sprites[0].dimensions.x;
+    i32 row_remain = 512;
+
+    glBindTexture(GL_TEXTURE_2D, atlas->texture.id);
+    for (i32 im = 0; im < atlas->next_free_sprite_id; im++)
+    {
+        auto sprite = atlas->sprites + im;
+        auto width = sprite->dimensions.x;
+        auto height = sprite->dimensions.y;
+        assert(width < 512 && "Sprite too big, make atlas bigger");
+
+        if ((i32)width > row_remain)
+        {
+            x = 0;
+            y += row_offset;
+            row_offset = height;
+            row_remain = 512;
+
+            assert(y < 512 && "Overflowed sprite atlas");
+        }
+
+        glTexSubImage2D(GL_TEXTURE_2D,
+            0,
+            x, y,
+            width, height,
+            GL_SRGB_ALPHA,
+            GL_UNSIGNED_BYTE,
+            sprite->data);
+
+        x += width;
+        row_remain -= width;
+    }
+
+    atlas->needs_rebuffer = false;
+}
+
+Sprite*
+atlas_get_sprite(SpriteAtlas* atlas, SpriteId sprite_id)
+{
+    assert(sprite_id < atlas->next_free_sprite_id && "Too many sprites");
+    return atlas->sprites + sprite_id;
+}
+
+SpriteId
+default_atlas_push_sprite(u32 width, u32 height, ubyte* data)
+{
+    return atlas_push_sprite(&render_state.sprite_atlas, width, height, data);
+}
+
+void
+default_atlas_rebuffer(mem::Arena* tmp_arena)
+{
+    atlas_rebuffer(&render_state.sprite_atlas, tmp_arena);
+}
 
 BatchBuffer*
 make_batch_buffer(mem::Arena* target_arena, u32 size_in_bytes)
@@ -1287,13 +1474,97 @@ make_batch_buffer(mem::Arena* target_arena, u32 size_in_bytes)
     return result;
 }
 
-struct QuadVertex
+static void
+do_draw_quads(mem::SimpleList<SpriteBufferVertex>* quad_verts, mem::SimpleList<u32>* indices)
 {
-    m::Vec2 min;
-    m::Vec2 max;
-    //TODO(spencer) here? we could, we could still support 4 different colors.
-    // m::Vec4 color;
-};
+    glBindVertexArray(render_state.sprite_buffer.vao);
+    glBindBuffer(GL_ARRAY_BUFFER, render_state.sprite_buffer.vbo);
+    glBufferData(GL_ARRAY_BUFFER, quad_verts->length * sizeof(SpriteBufferVertex), quad_verts->items, GL_DYNAMIC_DRAW);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, render_state.sprite_buffer.ebo);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices->length * sizeof(u32), indices->items, GL_DYNAMIC_DRAW);
+
+    // TODO: this should go somewhere else?
+    auto shader = render_state.active_shader;
+    glUseProgram(shader->id);
+
+    //std::cout << "GL_TEXTURE1 is " << GL_TEXTURE1 << std::endl;
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, render_state.sprite_atlas.texture.id);
+    m::Mat4 screen_transform =
+        m::scale_by(m::Vec3 {(2.0f / render_state.current_viewport.w), (2.0f / render_state.current_viewport.h), 0.0f})
+        * m::translation_by(m::Vec3 { -1.0f, -1.0f });
+
+    shader_set_uniform_m4v(shader, "screen_transform", screen_transform);
+
+    glDrawElements(GL_TRIANGLES, indices->length, GL_UNSIGNED_INT, 0);
+
+    glBindVertexArray(0);
+}
+
+static void
+basic_rect_to_verts(mem::SimpleList<SpriteBufferVertex>* verts, mem::SimpleList<u32>* indices, RectangleItem* rect_item)
+{
+    auto index_start = verts->length;
+    // TODO(spencer): we need to be z-sorting here
+    for (u32 i = 0; i < 4; i++)
+    {
+        auto vert = simple_list_append_new(verts);
+
+        vert->world_min.x = rect_item->min.x;
+        vert->world_min.y = rect_item->min.y;
+        vert->world_max.x = rect_item->max.x;
+        vert->world_max.y = rect_item->max.y;
+        vert->color_and_strength = rect_item->color_and_strength;
+    }
+
+    simple_list_append(indices, index_start + 0);
+    simple_list_append(indices, index_start + 1);
+    simple_list_append(indices, index_start + 2);
+    simple_list_append(indices, index_start + 2);
+    simple_list_append(indices, index_start + 3);
+    simple_list_append(indices, index_start + 0);
+}
+
+static void
+sprite_to_verts(mem::SimpleList<SpriteBufferVertex>* verts, mem::SimpleList<u32>* indices, SpriteItem* sprite_item)
+{
+    auto index_start = verts->length;
+
+    m::Vec3 world_min = sprite_item->position;
+    m::Vec3 world_max = {0, 0, 0};
+    m::Vec2 atlas_min = {0, 0};
+    m::Vec2 atlas_max = {0, 0};
+    auto sprite = atlas_get_sprite(&render_state.sprite_atlas, sprite_item->sprite_id);
+    if (sprite)
+    {
+        world_max.x = sprite_item->position.x + sprite->dimensions.x;
+        world_max.y = sprite_item->position.y + sprite->dimensions.y;
+        atlas_min = sprite->atlas_min;
+        atlas_max = sprite->atlas_max;
+    }
+
+    // TODO(spencer): we need to be z-sorting here
+    for (u32 i = 0; i < 4; i++)
+    {
+        auto vert = simple_list_append_new(verts);
+
+        vert->world_min.x = world_min.x;
+        vert->world_min.y = world_min.y;
+        vert->world_max.x = world_max.x;
+        vert->world_max.y = world_max.y;
+        vert->color_and_strength = sprite_item->color_and_strength;
+        vert->atlas_min = atlas_min;
+        vert->atlas_max = atlas_max;
+    }
+
+    simple_list_append(indices, index_start + 0);
+    simple_list_append(indices, index_start + 1);
+    simple_list_append(indices, index_start + 2);
+    simple_list_append(indices, index_start + 2);
+    simple_list_append(indices, index_start + 3);
+    simple_list_append(indices, index_start + 0);
+}
 
 void
 submit_batch(BatchBuffer* batch, mem::Arena* temp_arena)
@@ -1301,43 +1572,71 @@ submit_batch(BatchBuffer* batch, mem::Arena* temp_arena)
     u32 items_in_buffer = batch->items_in_buffer;
     u32 items_processed = 0;
 
-    QuadVertex* quad_verts = temp_arena->alloc_array<QuadVertex>(batch->quad_count * 4);
+    mem::SimpleList<SpriteBufferVertex> quad_verts = make_simple_list<SpriteBufferVertex>(batch->quad_count * 4, temp_arena);
+    mem::SimpleList<u32> indices = make_simple_list<u32>(batch->quad_count * 6, temp_arena);
 
-    u32* indices = temp_arena->alloc_array<u32>(batch->quad_count * 6);
-
-    u32 quad_idx = 0;
+    Item* item = reinterpret_cast<Item*>(batch->buffer);
     while (items_processed < items_in_buffer)
     {
-        Item* item = reinterpret_cast<Item*>(batch->buffer);
+        if (item->type != RenderItemType_Rectangle && quad_verts.length > 0)
+        {
+            do_draw_quads(&quad_verts, &indices);
+        }
+
         switch (item->type)
         {
             case RenderItemType_Rectangle:
             {
                 auto rect_item = reinterpret_cast<RectangleItem*>(item);
+                basic_rect_to_verts(&quad_verts, &indices, rect_item);
 
-                for (u32 i = 0; i < 4; i++)
-                {
-                    quad_verts[quad_idx + i].min.x = rect_item->min.x;
-                    quad_verts[quad_idx + i].min.y = rect_item->min.y;
-                    quad_verts[quad_idx + i].max.x = rect_item->max.x;
-                    quad_verts[quad_idx + i].max.y = rect_item->max.y;
-                }
-
-                u32 idx_start = quad_idx * 6;
-                u32 quad_idx_start = quad_idx * 4;
-                indices[idx_start]     = quad_idx_start + 0;
-                indices[idx_start + 1] = quad_idx_start + 1;
-                indices[idx_start + 2] = quad_idx_start + 2;
-                indices[idx_start + 3] = quad_idx_start + 2;
-                indices[idx_start + 4] = quad_idx_start + 3;
-                indices[idx_start + 5] = quad_idx_start + 0;
-
-                quad_idx++;
+                item = reinterpret_cast<Item*>(rect_item + 1);
             } break;
+
+            case RenderItemType_Sprite:
+            {
+                auto sprite_item = reinterpret_cast<SpriteItem*>(item);
+
+                sprite_to_verts(&quad_verts, &indices, sprite_item);
+
+                item = reinterpret_cast<Item*>(sprite_item + 1);
+            } break;
+
             case RenderItemType_ClearBufferCmd:
             {
+                auto clear_item = reinterpret_cast<ClearBufferCmdItem*>(item);
+                auto color = clear_item->clear_color;
+                glClearColor(color.r, color.g, color.b, color.a);
+                GLuint clear = GL_COLOR_BUFFER_BIT;
+                if (clear_item->clear_depth)
+                {
+                    clear |= GL_DEPTH_BUFFER_BIT;
+                }
 
+                glClear(clear);
+
+                item = reinterpret_cast<Item*>(clear_item + 1);
             } break;
+
+            case RenderItemType_SwitchTargetCmd:
+            {
+                auto switch_item = reinterpret_cast<SwitchTargetCmdItem*>(item);
+                auto target = switch_item->target;
+                glBindFramebuffer(GL_FRAMEBUFFER, target->target_framebuf);
+                glViewport(0, 0, target->w, target->h);
+
+                item = reinterpret_cast<Item*>(switch_item + 1);
+            } break;
+
+            case RenderItemType_UseShaderCmd:
+            {
+                auto shader_item = reinterpret_cast<UseShaderCmdItem*>(item);
+
+                render_state.active_shader = shader_item->shader;
+                
+                item = reinterpret_cast<Item*>(shader_item + 1);
+            } break;
+
             default:
             {
                 assert(0 && "Bad default case reached");
@@ -1346,31 +1645,10 @@ submit_batch(BatchBuffer* batch, mem::Arena* temp_arena)
         items_processed++;
     }
 
-    glBindVertexArray(render_state.sprite_buffer.vao);
-    glBindBuffer(GL_ARRAY_BUFFER, render_state.sprite_buffer.vbo);
-    glBufferData(GL_ARRAY_BUFFER, batch->quad_count * sizeof(QuadVertex) * 4, quad_verts, GL_DYNAMIC_DRAW);
-
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, render_state.sprite_buffer.ebo);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, 6 * batch->quad_count * sizeof(u32), indices, GL_DYNAMIC_DRAW);
-
-    // TODO: this should go somewhere else
-    auto shader = game_shaders[SIMPLE_RECTANGLE_SHADER];
-    glUseProgram(shader.id);
-
-    m::Mat4 screen_transform =
-        m::scale_by(m::Vec3 {(2.0f / 320.0f), (2.0f / 180.0f), 0.0f})
-        * m::translation_by(m::Vec3 { -1.0f, -1.0f });
-
-    std::cout << screen_transform << std::endl;
-
-    glUniformMatrix4fv(glGetUniformLocation(shader.id, "screen_transform"),
-                       1,
-                       false,
-                       reinterpret_cast<f32*>(&screen_transform));
-
-    glDrawElements(GL_TRIANGLES, 6 * batch->quad_count, GL_UNSIGNED_INT, 0);
-
-    glBindVertexArray(0);
+    if (quad_verts.length > 0)
+    {
+        do_draw_quads(&quad_verts, &indices);
+    }
 }
 
 } // namespace render

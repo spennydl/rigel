@@ -10,6 +10,7 @@
 #include "input.h"
 
 #include <SDL3/SDL.h>
+#include <SDL3/SDL_opengl.h>
 #include <SDL3/SDL_time.h>
 #include <glad/glad.h>
 #include <iostream>
@@ -79,28 +80,36 @@ initialize_game_memory()
 
 int main()
 {
+    // TODO(spencer) remove! this is for renderdoc if (!SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "x11"))
+    {
+        std::cout << "didn't set the hint" << std::endl;
+    }
     SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+    SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 
     SDL_Window* window = SDL_CreateWindow("rigel", 1920, 1080, SDL_WINDOW_OPENGL);
     SDL_Renderer* sdl_renderer = SDL_CreateRenderer(window, nullptr);
 
     SDL_GLContext context = SDL_GL_CreateContext(window);
+    SDL_GL_MakeCurrent(window, context);
+    //SDL_GL_SetSwapInterval(1); // Enable vsync
 
-    int version = gladLoadGL();
-    std::cout << "Loaded version " << version << std::endl;
+    i32 w, h;
+    SDL_GetRenderOutputSize(sdl_renderer, &w, &h);
+    std::cout << "the screen is " << w << "x" << h << std::endl;
+
+    gladLoadGL();
+    std::cout << "Loaded version " << "Loaded OpenGL " << GLVersion.major << " " << GLVersion.minor << std::endl;
 
     input_start();
 
     mem::GameMem memory = initialize_game_memory();
 
-    i32 w, h;
-    SDL_GetRenderOutputSize(sdl_renderer, &w, &h);
-    std::cout << "the screen is " << w << "x" << h << std::endl;
 
     resource_initialize(memory.resource_arena);
 
@@ -130,9 +139,14 @@ int main()
         std::cerr << "warn: couln't get current time? " << SDL_GetError() << std::endl;
     }
 
+    render::default_atlas_rebuffer(&memory.frame_temp_arena);
+
     while (running) {
 
         render::BatchBuffer* entity_batch_buffer = render::make_batch_buffer(&memory.frame_temp_arena, 128);
+        auto rect_shader = render::game_shaders + render::SIMPLE_RECTANGLE_SHADER;
+        auto shader_item = render::push_render_item<render::UseShaderCmdItem>(entity_batch_buffer);
+        shader_item->shader = rect_shader;
 
         while (SDL_PollEvent(&event)) {
             // quick and dirty for now
@@ -328,6 +342,23 @@ int main()
             render::end_render_to_target();
 
             render::end_render();
+
+            // use sprite shader
+            auto other_batch = render::make_batch_buffer(&memory.frame_temp_arena, 64);
+            auto sprite_shader = render::game_shaders + render::SIMPLE_SPRITE_SHADER;
+            auto sprite_shader_item = render::push_render_item<render::UseShaderCmdItem>(other_batch);
+            sprite_shader_item->shader = sprite_shader;
+            // a test
+            shader_set_uniform_1i(sprite_shader, "sprite_atlas", 1);
+
+            // draw sprite
+            auto sprite_render = render::push_render_item<render::SpriteItem>(other_batch);
+            auto player = world_chunk->entities + world_chunk->player_id;
+            sprite_render->sprite_id = player->new_sprite_id;
+            sprite_render->position = {0, 0, 0};
+            sprite_render->color_and_strength = {1, 0, 0, 0.0};
+
+            render::submit_batch(other_batch, &memory.frame_temp_arena);
 
             SDL_GL_SwapWindow(window);
 
