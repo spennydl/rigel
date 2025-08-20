@@ -59,7 +59,7 @@ initialize_game_memory()
     memory.stage_arena = memory.ephemeral_arena.alloc_sub_arena(ONE_MB);
     memory.colliders_arena = memory.ephemeral_arena.alloc_sub_arena(1024);
     // TODO: this should be much bigger, ya?
-    memory.frame_temp_arena = memory.ephemeral_arena.alloc_sub_arena(2 * ONE_MB);
+    memory.frame_temp_arena = memory.ephemeral_arena.alloc_sub_arena(5 * ONE_MB);
     memory.resource_arena = memory.ephemeral_arena.alloc_sub_arena(12 * ONE_MB);
     memory.gfx_arena = memory.ephemeral_arena.alloc_sub_arena(2 * ONE_KB);
     memory.debug_arena = memory.ephemeral_arena.alloc_sub_arena(1 * ONE_MB);
@@ -80,10 +80,6 @@ initialize_game_memory()
 
 int main()
 {
-    // TODO(spencer) remove! this is for renderdoc if (!SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "x11"))
-    {
-        std::cout << "didn't set the hint" << std::endl;
-    }
     SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 
@@ -93,11 +89,12 @@ int main()
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 
     SDL_Window* window = SDL_CreateWindow("rigel", 1920, 1080, SDL_WINDOW_OPENGL);
+    SDL_SetHint(SDL_HINT_RENDER_VSYNC, "1");
     SDL_Renderer* sdl_renderer = SDL_CreateRenderer(window, nullptr);
 
     SDL_GLContext context = SDL_GL_CreateContext(window);
     SDL_GL_MakeCurrent(window, context);
-    //SDL_GL_SetSwapInterval(1); // Enable vsync
+    SDL_GL_SetSwapInterval(1); // Enable vsync
 
     i32 w, h;
     SDL_GetRenderOutputSize(sdl_renderer, &w, &h);
@@ -138,12 +135,25 @@ int main()
     if (!SDL_GetCurrentTime(&last_render_time)) {
         std::cerr << "warn: couln't get current time? " << SDL_GetError() << std::endl;
     }
+    i64 start_time;
+    if (!SDL_GetCurrentTime(&start_time)) {
+        std::cerr << "warn: couln't get current time? " << SDL_GetError() << std::endl;
+    }
 
     render::default_atlas_rebuffer(&memory.frame_temp_arena);
 
-    while (running) {
+    render::VertexBuffer vertbuf;
+    render::set_up_vertex_buffer_for_rectangles(&vertbuf);
 
-        render::BatchBuffer* entity_batch_buffer = render::make_batch_buffer(&memory.frame_temp_arena, 128);
+    render::RectangleBufferVertex rect = {0};
+    rect.world_min = m::Vec2 { 0, 0 };
+    rect.world_max = m::Vec2 { 20, 20 };
+    rect.color_and_strength = m::Vec4{ 1, 0, 0, 1 };
+
+    render::buffer_rectangles(&vertbuf, &rect, 1, &memory.frame_temp_arena);
+
+    while (running) {
+        render::BatchBuffer* entity_batch_buffer = render::make_batch_buffer(&memory.frame_temp_arena, 256);
         auto rect_shader = render::game_shaders + render::SIMPLE_SPRITE_SHADER;
         auto shader_item = render::push_render_item<render::UseShaderCmdItem>(entity_batch_buffer);
         shader_item->shader = rect_shader;
@@ -294,7 +304,6 @@ int main()
             std::cerr << "warn: couln't get current time? " << SDL_GetError() << std::endl;
         }
 
-
         i64 delta_update_time = iter_time - last_update_time;
         if (delta_update_time >= UPDATE_TIME_NS) {
 #ifdef RIGEL_DEBUG
@@ -333,36 +342,32 @@ int main()
 
             render::render_background_layer(viewport, world_chunk);
 
-            render::render_all_entities(viewport, world_chunk);
-
             render::render_foreground_layer(viewport, world_chunk);
             render::render_decoration_layer(viewport, world_chunk);
 
+            //auto player = world_chunk->entities + world_chunk->player_id;
+
+            auto shader_item = render::push_render_item<render::UseShaderCmdItem>(entity_batch_buffer);
+            shader_item->shader = &render::game_shaders[render::SIMPLE_RECTANGLE_SHADER];
+            auto vert_buf_item = render::push_render_item<render::DrawVertexBufferCmdItem>(entity_batch_buffer);
+            vert_buf_item->buffer = &vertbuf;
+            
             render::submit_batch(entity_batch_buffer, &memory.frame_temp_arena);
 
+            //render::test_shadow_map(&memory.frame_temp_arena, world_chunk->active_map, player->position + m::Vec3{4, 8}, 0);
             render::end_render_to_target();
 
             render::end_render();
 
-            // use sprite shader
-            auto other_batch = render::make_batch_buffer(&memory.frame_temp_arena, 128);
-            auto sprite_shader = render::game_shaders + render::SIMPLE_SPRITE_SHADER;
-            auto sprite_shader_item = render::push_render_item<render::UseShaderCmdItem>(other_batch);
-            sprite_shader_item->shader = sprite_shader;
-            // a test
-
-            // draw sprite
-            auto sprite_render = render::push_render_item<render::SpriteItem>(other_batch);
-            auto player = world_chunk->entities + world_chunk->player_id;
-            sprite_render->sprite_id = player->new_sprite_id;
-            sprite_render->position = {0, 0, 0};
-            sprite_render->color_and_strength = {1, 0, 0, 0.0};
-
-            render::submit_batch(other_batch, &memory.frame_temp_arena);
-
             SDL_GL_SwapWindow(window);
 
             memory.frame_temp_arena.reinit();
+
+
+            i64 one_frame_time;
+            if (!SDL_GetCurrentTime(&one_frame_time)) {
+                std::cerr << "warn: couln't get current time? " << SDL_GetError() << std::endl;
+            }
         }
 
         //std::cout << "Here we have " << entity_batch_buffer->items_in_buffer << std::endl;

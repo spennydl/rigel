@@ -22,7 +22,9 @@ struct TileMap
     usize n_nonempty_tiles;
     TileType tiles[WORLD_SIZE_TILES];
     u16 tile_sprites[WORLD_SIZE_TILES];
+
     ResourceId tile_sheet;
+
     TileMap* background;
     TileMap* decoration;
 };

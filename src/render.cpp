@@ -33,6 +33,7 @@ struct RenderState
 
     // new renderer stuff
     VertexBuffer sprite_buffer;
+    VertexBuffer quad_buffer;
     SpriteAtlas sprite_atlas;
     Shader* active_shader;
 
@@ -569,7 +570,7 @@ layout (location = 3) in vec2 atlas_min_p;
 layout (location = 4) in vec2 atlas_max_p;
 
 out vec4 color;
-out vec2 atlas_uv;
+out vec2 tex_uv;
 
 uniform mat4 screen_transform;
 
@@ -602,14 +603,14 @@ void main()
 
     color = color_and_strength;
     // TODO(spencer): prolly shouldn't hard code this
-    atlas_uv = atlas_coord / 512.0f;
+    tex_uv = atlas_coord / 512.0f;
 })SRC";
 
 
 const char* simple_rect_fs = R"SRC(
 #version 400 core
 in vec4 color;
-in vec2 atlas_uv;
+in vec2 tex_uv;
 out vec4 FragColor;
 
 void main()
@@ -620,7 +621,7 @@ void main()
 const char* simple_sprite_fs = R"SRC(
 #version 400 core
 in vec4 color;
-in vec2 atlas_uv;
+in vec2 tex_uv;
 
 uniform sampler2D sprite_atlas;
 
@@ -628,9 +629,26 @@ out vec4 FragColor;
 
 void main()
 {
-    vec4 sampl = texture(sprite_atlas, atlas_uv);
+    vec4 sampl = texture(sprite_atlas, tex_uv);
     vec3 mixed_color = mix(sampl.rgb, color.rgb, color.a);
     FragColor = vec4(mixed_color, sampl.a);
+})SRC";
+
+const char* simple_quad_vs = R"SRC(
+#version 400 core
+layout (location = 0) in vec4 p;
+layout (location = 1) in vec2 uv;
+layout (location = 2) in vec4 color_v;
+
+out vec2 tex_uv;
+out vec4 color;
+
+uniform mat4 screen_transform;
+
+void main() {
+    gl_Position = screen_transform * p;
+    tex_uv = uv;
+    color = color_v;
 })SRC";
 
 const char* screen_vs_src = R"SRC(
@@ -815,15 +833,6 @@ void render_debug_lines()
 
 #endif
 
-struct SpriteBufferVertex
-{
-    m::Vec2 world_min;
-    m::Vec2 world_max;
-    m::Vec4 color_and_strength;
-    m::Vec2 atlas_min;
-    m::Vec2 atlas_max;
-};
-
 void initialize_renderer(mem::Arena* gfx_arena, f32 fb_width, f32 fb_height)
 {
     render_state.gfx_arena = gfx_arena;
@@ -835,32 +844,8 @@ void initialize_renderer(mem::Arena* gfx_arena, f32 fb_width, f32 fb_height)
     glBindBufferBase(GL_UNIFORM_BUFFER, 0, render_state.global_ubo);
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
-    // sprite buffer
-    glGenVertexArrays(1, &render_state.sprite_buffer.vao);
-    glGenBuffers(1, &render_state.sprite_buffer.vbo);
-    glGenBuffers(1, &render_state.sprite_buffer.ebo);
-
-    glBindVertexArray(render_state.sprite_buffer.vao);
-    glBindBuffer(GL_ARRAY_BUFFER, render_state.sprite_buffer.vbo);
-    glBufferData(GL_ARRAY_BUFFER, 0, 0, GL_DYNAMIC_DRAW);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, render_state.sprite_buffer.ebo);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, 0, 0, GL_DYNAMIC_DRAW);
-
-    // min & max
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(SpriteBufferVertex), (void*)0);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(SpriteBufferVertex), (void*)offsetof(SpriteBufferVertex, world_max));
-    glEnableVertexAttribArray(1);
-    // color: rgb + strength
-    glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, sizeof(SpriteBufferVertex), (void*)offsetof(SpriteBufferVertex, color_and_strength));
-    glEnableVertexAttribArray(2);
-    // atlas min & max
-    glVertexAttribPointer(3, 2, GL_FLOAT, GL_FALSE, sizeof(SpriteBufferVertex), (void*)offsetof(SpriteBufferVertex, atlas_min));
-    glEnableVertexAttribArray(3);
-    glVertexAttribPointer(4, 2, GL_FLOAT, GL_FALSE, sizeof(SpriteBufferVertex), (void*)offsetof(SpriteBufferVertex, atlas_max));
-    glEnableVertexAttribArray(4);
-
-    glBindVertexArray(0);
+    set_up_vertex_buffer_for_rectangles(&render_state.sprite_buffer);
+    set_up_vertex_buffer_for_quads(&render_state.quad_buffer);
 
     TextureConfig sprite_atlas_cfg;
     sprite_atlas_cfg.width = 512;
@@ -906,6 +891,9 @@ void initialize_renderer(mem::Arena* gfx_arena, f32 fb_width, f32 fb_height)
 
     Shader* simple_sprite = &game_shaders[SIMPLE_SPRITE_SHADER];
     shader_load_from_src(simple_sprite, simple_rect_vs, simple_sprite_fs);
+
+    Shader* simple_quad = &game_shaders[SIMPLE_QUAD_SHADER];
+    shader_load_from_src(simple_quad, simple_quad_vs, simple_rect_fs);
 
     render_state.screen.initialize();
 
@@ -1462,11 +1450,126 @@ default_atlas_rebuffer(mem::Arena* tmp_arena)
     atlas_rebuffer(&render_state.sprite_atlas, tmp_arena);
 }
 
+void 
+set_up_vertex_buffer_for_rectangles(VertexBuffer* buffer)
+{
+    if (is_vertex_buffer_renderable(buffer))
+    {
+        // blow old ones away
+        glDeleteBuffers(1, &buffer->ebo);
+        glDeleteBuffers(1, &buffer->vbo);
+        glDeleteVertexArrays(1, &buffer->vao);
+    }
+
+    // make new buffers
+    glGenVertexArrays(1, &buffer->vao);
+    glGenBuffers(1, &buffer->vbo);
+    glGenBuffers(1, &buffer->ebo);
+
+    glBindVertexArray(buffer->vao);
+    glBindBuffer(GL_ARRAY_BUFFER, buffer->vbo);
+    glBufferData(GL_ARRAY_BUFFER, 0, 0, GL_DYNAMIC_DRAW);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, buffer->ebo);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, 0, 0, GL_DYNAMIC_DRAW);
+
+    // min & max
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(RectangleBufferVertex), (void*)0);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(RectangleBufferVertex), (void*)offsetof(RectangleBufferVertex, world_max));
+    glEnableVertexAttribArray(1);
+    // color: rgb + strength
+    glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, sizeof(RectangleBufferVertex), (void*)offsetof(RectangleBufferVertex, color_and_strength));
+    glEnableVertexAttribArray(2);
+    // atlas min & max
+    glVertexAttribPointer(3, 2, GL_FLOAT, GL_FALSE, sizeof(RectangleBufferVertex), (void*)offsetof(RectangleBufferVertex, atlas_min));
+    glEnableVertexAttribArray(3);
+    glVertexAttribPointer(4, 2, GL_FLOAT, GL_FALSE, sizeof(RectangleBufferVertex), (void*)offsetof(RectangleBufferVertex, atlas_max));
+    glEnableVertexAttribArray(4);
+
+    glBindVertexArray(0);
+}
+
+void 
+set_up_vertex_buffer_for_quads(VertexBuffer* buffer)
+{
+    if (is_vertex_buffer_renderable(buffer))
+    {
+        // blow old ones away
+        glDeleteBuffers(1, &buffer->ebo);
+        glDeleteBuffers(1, &buffer->vbo);
+        glDeleteVertexArrays(1, &buffer->vao);
+    }
+
+    // new buffer
+    glGenVertexArrays(1, &buffer->vao);
+    glGenBuffers(1, &buffer->vbo);
+    glGenBuffers(1, &buffer->ebo);
+
+    glBindVertexArray(buffer->vao);
+    glBindBuffer(GL_ARRAY_BUFFER, buffer->vbo);
+    glBufferData(GL_ARRAY_BUFFER, 0, 0, GL_DYNAMIC_DRAW);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, buffer->ebo);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, 0, 0, GL_DYNAMIC_DRAW);
+
+    // p
+    glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, sizeof(QuadBufferVertex), (void*)0);
+    glEnableVertexAttribArray(0);
+    // uv
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(QuadBufferVertex), (void*)(offsetof(QuadBufferVertex, uv)));
+    glEnableVertexAttribArray(1);
+    // color & strength
+    glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, sizeof(QuadBufferVertex), (void*)(offsetof(QuadBufferVertex, color_and_strength)));
+    glEnableVertexAttribArray(2);
+
+    glBindVertexArray(0);
+}
+
+// TODO(spencer): Maybe we buffer sprites instead? I still don't like that we're
+// using RectangleBufferVertex, I think that's something that shouldn't escape the renderer. Hmmmm.
+void
+buffer_rectangles(VertexBuffer* buffer, RectangleBufferVertex* rectangles, u32 n_rects, mem::Arena* scratch_arena)
+{
+    u32 total_n_verts = n_rects * 4;
+    u32 total_n_indices = n_rects * 6;
+
+    mem::SimpleList<RectangleBufferVertex> verts = mem::make_simple_list<RectangleBufferVertex>(total_n_verts, scratch_arena);
+    mem::SimpleList<u32> indices = mem::make_simple_list<u32>(total_n_indices, scratch_arena);
+
+    for (u32 i = 0; i < n_rects; i++) 
+    {
+        for (u32 vert = 0; vert < 4; vert++)
+        {
+            simple_list_append(&verts, rectangles[i]);
+        }
+        
+        auto index_start = i * 4;
+        simple_list_append(&indices, index_start + 0);
+        simple_list_append(&indices, index_start + 1);
+        simple_list_append(&indices, index_start + 2);
+        simple_list_append(&indices, index_start + 2);
+        simple_list_append(&indices, index_start + 3);
+        simple_list_append(&indices, index_start + 0);
+    }
+
+    glBindVertexArray(buffer->vao);
+    glBindBuffer(GL_ARRAY_BUFFER, buffer->vbo);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, buffer->ebo);
+
+    // TODO(spencer): need to expose memory type param
+    glBufferData(GL_ARRAY_BUFFER, verts.length * sizeof(RectangleBufferVertex), verts.items, GL_STATIC_DRAW);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.length * sizeof(u32), indices.items, GL_STATIC_DRAW);
+    
+    glBindVertexArray(0);
+
+    buffer->n_elems = indices.length;
+}
+
 BatchBuffer*
 make_batch_buffer(mem::Arena* target_arena, u32 size_in_bytes)
 {
     BatchBuffer* result = target_arena->alloc_simple<BatchBuffer>();
     result->buffer = target_arena->alloc_bytes(size_in_bytes);
+    result->rect_count = 0;
     result->quad_count = 0;
     result->items_in_buffer = 0;
     result->buffer_used = 0;
@@ -1475,15 +1578,8 @@ make_batch_buffer(mem::Arena* target_arena, u32 size_in_bytes)
 }
 
 static void
-do_draw_quads(mem::SimpleList<SpriteBufferVertex>* quad_verts, mem::SimpleList<u32>* indices)
+do_draw_elem_buffer(u32 n_elems)
 {
-    glBindVertexArray(render_state.sprite_buffer.vao);
-    glBindBuffer(GL_ARRAY_BUFFER, render_state.sprite_buffer.vbo);
-    glBufferData(GL_ARRAY_BUFFER, quad_verts->length * sizeof(SpriteBufferVertex), quad_verts->items, GL_DYNAMIC_DRAW);
-
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, render_state.sprite_buffer.ebo);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices->length * sizeof(u32), indices->items, GL_DYNAMIC_DRAW);
-
     // TODO: this should go somewhere else?
     auto shader = render_state.active_shader;
     glUseProgram(shader->id);
@@ -1497,13 +1593,43 @@ do_draw_quads(mem::SimpleList<SpriteBufferVertex>* quad_verts, mem::SimpleList<u
 
     shader_set_uniform_m4v(shader, "screen_transform", screen_transform);
 
-    glDrawElements(GL_TRIANGLES, indices->length, GL_UNSIGNED_INT, 0);
+    glDrawElements(GL_TRIANGLES, n_elems, GL_UNSIGNED_INT, 0);
+}
+
+
+static void
+do_draw_rects(mem::SimpleList<RectangleBufferVertex>* quad_verts, mem::SimpleList<u32>* indices)
+{
+    glBindVertexArray(render_state.sprite_buffer.vao);
+    glBindBuffer(GL_ARRAY_BUFFER, render_state.sprite_buffer.vbo);
+    glBufferData(GL_ARRAY_BUFFER, quad_verts->length * sizeof(RectangleBufferVertex), quad_verts->items, GL_DYNAMIC_DRAW);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, render_state.sprite_buffer.ebo);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices->length * sizeof(u32), indices->items, GL_DYNAMIC_DRAW);
+
+    do_draw_elem_buffer(indices->length);
+
+    glBindVertexArray(0);
+}
+
+// TODO: this is the same as above
+static void
+do_draw_quads(mem::SimpleList<QuadBufferVertex>* quad_verts, mem::SimpleList<u32>* indices)
+{
+    glBindVertexArray(render_state.quad_buffer.vao);
+    glBindBuffer(GL_ARRAY_BUFFER, render_state.quad_buffer.vbo);
+    glBufferData(GL_ARRAY_BUFFER, quad_verts->length * sizeof(QuadBufferVertex), quad_verts->items, GL_DYNAMIC_DRAW);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, render_state.quad_buffer.ebo);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices->length * sizeof(u32), indices->items, GL_DYNAMIC_DRAW);
+
+    do_draw_elem_buffer(indices->length);
 
     glBindVertexArray(0);
 }
 
 static void
-basic_rect_to_verts(mem::SimpleList<SpriteBufferVertex>* verts, mem::SimpleList<u32>* indices, RectangleItem* rect_item)
+basic_rect_to_verts(mem::SimpleList<RectangleBufferVertex>* verts, mem::SimpleList<u32>* indices, RectangleItem* rect_item)
 {
     auto index_start = verts->length;
     // TODO(spencer): we need to be z-sorting here
@@ -1527,7 +1653,7 @@ basic_rect_to_verts(mem::SimpleList<SpriteBufferVertex>* verts, mem::SimpleList<
 }
 
 static void
-sprite_to_verts(mem::SimpleList<SpriteBufferVertex>* verts, mem::SimpleList<u32>* indices, SpriteItem* sprite_item)
+sprite_to_verts(mem::SimpleList<RectangleBufferVertex>* verts, mem::SimpleList<u32>* indices, SpriteItem* sprite_item)
 {
     auto index_start = verts->length;
 
@@ -1568,20 +1694,72 @@ sprite_to_verts(mem::SimpleList<SpriteBufferVertex>* verts, mem::SimpleList<u32>
 }
 
 void
+quad_to_verts(mem::SimpleList<QuadBufferVertex>* quad_verts, mem::SimpleList<u32>* quad_indices, QuadItem* quad_item)
+{
+    // expects CCW winding
+    auto v1 = simple_list_append_new(quad_verts);
+    v1->p = quad_item->v1;
+    v1->uv = m::Vec2 {0, 0};
+    v1->color_and_strength = quad_item->color_and_strength;
+
+    auto v2 = simple_list_append_new(quad_verts);
+    v2->p = quad_item->v2;
+    v2->uv = m::Vec2 {1, 0};
+    v2->color_and_strength = quad_item->color_and_strength;
+
+    auto v3 = simple_list_append_new(quad_verts);
+    v3->p = quad_item->v3;
+    v3->uv = m::Vec2 {1, 1};
+    v3->color_and_strength = quad_item->color_and_strength;
+
+    auto v4 = simple_list_append_new(quad_verts);
+    v4->p = quad_item->v4;
+    v4->uv = m::Vec2 {0, 1};
+    v4->color_and_strength = quad_item->color_and_strength;
+
+    auto index_start = quad_verts->length;
+    simple_list_append(quad_indices, index_start + 0);
+    simple_list_append(quad_indices, index_start + 1);
+    simple_list_append(quad_indices, index_start + 2);
+    simple_list_append(quad_indices, index_start + 2);
+    simple_list_append(quad_indices, index_start + 3);
+    simple_list_append(quad_indices, index_start + 0);
+}
+
+void
 submit_batch(BatchBuffer* batch, mem::Arena* temp_arena)
 {
     u32 items_in_buffer = batch->items_in_buffer;
     u32 items_processed = 0;
 
-    mem::SimpleList<SpriteBufferVertex> quad_verts = make_simple_list<SpriteBufferVertex>(batch->quad_count * 4, temp_arena);
-    mem::SimpleList<u32> indices = make_simple_list<u32>(batch->quad_count * 6, temp_arena);
+    // TODO(spencer): this seems silly. Is it really worth treating these differently?
+    mem::SimpleList<RectangleBufferVertex> rect_verts = make_simple_list<RectangleBufferVertex>(batch->rect_count * 4, temp_arena);
+    mem::SimpleList<u32> rect_indices = make_simple_list<u32>(batch->rect_count * 6, temp_arena);
+    mem::SimpleList<QuadBufferVertex> quad_verts = make_simple_list<QuadBufferVertex>(batch->quad_count * 4, temp_arena);
+    mem::SimpleList<u32> quad_indices = make_simple_list<u32>(batch->quad_count * 6, temp_arena);
 
+    b32 need_to_render = false;
+    //RenderItemType last_renderable_type = RenderItemType_None;
     Item* item = reinterpret_cast<Item*>(batch->buffer);
     while (items_processed < items_in_buffer)
     {
-        if (item->type != RenderItemType_Rectangle && quad_verts.length > 0)
+        // TODO(spencer): maybe what I'm after is something like `need_to_render = item->type == shader`?
+        need_to_render = (!is_renderable(item->type) && (rect_verts.length > 0 || quad_verts.length > 0));
+                         
+        if (need_to_render)
         {
-            do_draw_quads(&quad_verts, &indices);
+            if (rect_verts.length > 0)
+            {
+                do_draw_rects(&rect_verts, &rect_indices);
+                rect_verts.length = 0;
+                rect_indices.length = 0;
+            }
+            if (quad_verts.length > 0)
+            {
+                do_draw_quads(&quad_verts, &quad_indices);
+                quad_verts.length = 0;
+                quad_indices.length = 0;
+            }
         }
 
         switch (item->type)
@@ -1589,7 +1767,8 @@ submit_batch(BatchBuffer* batch, mem::Arena* temp_arena)
             case RenderItemType_Rectangle:
             {
                 auto rect_item = reinterpret_cast<RectangleItem*>(item);
-                basic_rect_to_verts(&quad_verts, &indices, rect_item);
+
+                basic_rect_to_verts(&rect_verts, &rect_indices, rect_item);
 
                 item = reinterpret_cast<Item*>(rect_item + 1);
             } break;
@@ -1598,9 +1777,19 @@ submit_batch(BatchBuffer* batch, mem::Arena* temp_arena)
             {
                 auto sprite_item = reinterpret_cast<SpriteItem*>(item);
 
-                sprite_to_verts(&quad_verts, &indices, sprite_item);
+                sprite_to_verts(&rect_verts, &rect_indices, sprite_item);
 
                 item = reinterpret_cast<Item*>(sprite_item + 1);
+            } break;
+
+            case RenderItemType_Quad:
+            {
+                auto quad_item = reinterpret_cast<QuadItem*>(item);
+
+                quad_to_verts(&quad_verts, &quad_indices, quad_item); 
+
+                item = reinterpret_cast<Item*>(quad_item + 1);
+
             } break;
 
             case RenderItemType_ClearBufferCmd:
@@ -1638,6 +1827,18 @@ submit_batch(BatchBuffer* batch, mem::Arena* temp_arena)
                 item = reinterpret_cast<Item*>(shader_item + 1);
             } break;
 
+            case RenderItemType_DrawVertexBufferCmd:
+            {
+                auto draw_item = reinterpret_cast<DrawVertexBufferCmdItem*>(item);
+
+                glBindVertexArray(draw_item->buffer->vao);
+                do_draw_elem_buffer(draw_item->buffer->n_elems);
+                glBindVertexArray(0);
+
+                item = reinterpret_cast<Item*>(draw_item + 1);
+
+            } break;
+
             default:
             {
                 assert(0 && "Bad default case reached");
@@ -1646,10 +1847,94 @@ submit_batch(BatchBuffer* batch, mem::Arena* temp_arena)
         items_processed++;
     }
 
+    // TODO(spencer): I oughta be smarter about this, eh?
+    if (rect_verts.length > 0)
+    {
+        do_draw_rects(&rect_verts, &rect_indices);
+    }
+
     if (quad_verts.length > 0)
     {
-        do_draw_quads(&quad_verts, &indices);
+        do_draw_quads(&quad_verts, &quad_indices);
     }
+}
+
+void 
+test_shadow_map(mem::Arena* scratch_arena, TileMap* tile_map, m::Vec3 light_pos, i32 light_index)
+{
+    auto batch_buffer = make_batch_buffer(scratch_arena, ONE_MB);
+
+    auto shader = &game_shaders[SIMPLE_QUAD_SHADER];
+
+    auto shader_item = push_render_item<UseShaderCmdItem>(batch_buffer);
+    shader_item->shader = shader;
+
+    m::Mat4 world_transform =
+        m::translation_by({0.0f, (f32)(-WORLD_HEIGHT_TILES * TILE_WIDTH_PIXELS), 0.0f}) *
+        m::scale_by({1.0f, -1.0f, 1.0f});
+
+    m::Vec2 light_tilespace {light_pos.x, 180.0f - light_pos.y};
+
+    for (usize y = 0; y < WORLD_HEIGHT_TILES; y++)
+    {
+        for (usize x = 0; x < WORLD_WIDTH_TILES; x++)
+        {
+            m::Vec2 dir_to_light =
+                m::Vec2{(f32)(x * TILE_WIDTH_PIXELS), (f32)(y * TILE_WIDTH_PIXELS)} - light_tilespace;
+            usize i = tile_to_index(x, y);
+
+            if (tile_map->tiles[i] == TileType::EMPTY)
+            {
+                continue;
+            }
+
+            m::Vec2 tile_verts[] = {
+                {(f32)(x * TILE_WIDTH_PIXELS),                       (f32)(y * TILE_WIDTH_PIXELS)},
+                {(f32)((x * TILE_WIDTH_PIXELS) + TILE_WIDTH_PIXELS), (f32)(y * TILE_WIDTH_PIXELS)},
+                {(f32)((x * TILE_WIDTH_PIXELS) + TILE_WIDTH_PIXELS), (f32)((y * TILE_WIDTH_PIXELS) + TILE_WIDTH_PIXELS)},
+                {(f32)(x * TILE_WIDTH_PIXELS),                       (f32)((y * TILE_WIDTH_PIXELS) + TILE_WIDTH_PIXELS)}
+            };
+
+            for (usize edge_start = 0; edge_start < 4; edge_start++)
+            {
+                usize edge_end = edge_start + 1;
+                if (edge_end >= 4)
+                {
+                    edge_end = 0;
+                }
+
+                m::Vec2 edge = tile_verts[edge_end] - tile_verts[edge_start];
+                m::Vec2 norm {-edge.y, edge.x};
+                if (m::dot(norm, dir_to_light) <= 0)
+                {
+                    continue;
+                }
+
+                m::Vec2 end_from_light = tile_verts[edge_end] - light_tilespace;
+                m::Vec2 start_from_light = tile_verts[edge_start] - light_tilespace;
+
+                auto quad_item = push_render_item<QuadItem>(batch_buffer);
+                m::Mat4 verts;
+                verts[0] = m::Vec4 { tile_verts[edge_start].x, tile_verts[edge_start].y, 0.0f, 1.0f };
+                verts[1] = m::Vec4 { tile_verts[edge_end].x, tile_verts[edge_end].y, 0.0f, 1.0f };
+                verts[2] = m::Vec4 { end_from_light.x, end_from_light.y, 0.0f, 0.0f };
+                verts[3] = m::Vec4 { start_from_light.x, start_from_light.y, 0.0f, 0.0f }; 
+                
+                // this is a little weird
+                verts = m::transpose(verts);
+                verts = m::transpose(world_transform) * verts;
+                verts = m::transpose(verts);
+
+                quad_item->v1 = verts[0];
+                quad_item->v2 = verts[1];
+                quad_item->v3 = verts[2];
+                quad_item->v4 = verts[3];
+
+            }
+        }
+    }
+
+    submit_batch(batch_buffer, scratch_arena);
 }
 
 } // namespace render

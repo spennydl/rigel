@@ -111,21 +111,9 @@ collides_with_level(AABB aabb, TileMap* tile_map)
 EntityMoveResult
 move_entity(Entity* entity, TileMap* tile_map, f32 dt, f32 top_speed)
 {
-    // we assume now that e->acceleration has been determined for the frame.
-    f32 dt2 = dt*dt;
-
-    // NOTE: changed to this simpler integration. It will introduce some error when acceleration
-    // changes.
-    // Old was velocity verlet:
-    //
-    // glm::vec3 new_pos = player->position + player->velocity*dt + player->acceleration*(dt2*0.5f);
-    // glm::vec3 new_vel = player->velocity + (player->acceleration + new_acc)*(dt*0.5f);
-    m::Vec3 new_pos = entity->position + entity->velocity*dt + entity->acceleration*(dt2*0.5f);
-    //std::cout << "New pos is " << new_pos.x << "," << new_pos.y << std::endl;
-    //std::cout << "v " << entity->velocity.x << "," << entity->velocity.y << std::endl;
-    //std::cout << "a " << entity->acceleration.x << "," << entity->acceleration.y << std::endl;
-    m::Vec3 new_vel = entity->velocity + (entity->acceleration * dt);
-
+#if 1
+    // semi-implicit euler
+    m::Vec3 new_vel = entity->velocity + entity->acceleration * dt;
     if (m::abs(new_vel.x) > top_speed)
     {
         new_vel.x = top_speed * m::signof(new_vel.x);
@@ -136,25 +124,44 @@ move_entity(Entity* entity, TileMap* tile_map, f32 dt, f32 top_speed)
         new_vel.x = 0;
     }
 
+    m::Vec3 new_pos = entity->position + new_vel * dt;
+#else
+    // velocity verlet
+    f32 dt2 = dt*dt;
+    m::Vec3 new_pos = entity->position + (entity->velocity * dt) + (entity->old_accel*dt2*0.5f);
+    m::Vec3 new_acc = entity->acceleration;
+    m::Vec3 new_vel = entity->velocity + ((entity->old_accel + new_acc) * dt * 0.5f);
+    entity->old_accel = new_acc;
+    if (m::abs(new_vel.x) > top_speed)
+    {
+        new_vel.x = top_speed * m::signof(new_vel.x);
+    }
+
+    if (m::abs(new_vel.x) < 0.0125)
+    {
+        new_vel.x = 0;
+    }
+#endif
+
+
+
     CollisionResult min_collision_result;
 
-    m::Vec3 dest_pixel = new_pos;
-    dest_pixel.x = floorf(dest_pixel.x);
-    dest_pixel.y = floorf(dest_pixel.y);
+    m::Vec3 dest_pixel = m::floor(new_pos);
     m::Vec3 dest_fract = m::fract(new_pos);
 
     m::Vec3 entity_pixel_position = m::floor(entity->position);// + m::Vec3{0.5f, 0.5f, 0.0f};
 
     AABB entity_aabb = entity_get_collider(entity);
-    bool we_found_one = false;
-    bool collided[9] = {0};
+    b32 we_found_one = false;
+    b32 collided[9] = {0};
     EntityMoveResult move_result{};
     move_result.collision_happened = false;
     f32 sqdist_to_dest;
 
     while (true) // TODO: we should really limit this
     {
-        m::Vec3 current_displacement = new_pos - (entity_pixel_position + m::Vec3{0.5f, 0.5f, 0.0f});
+        m::Vec3 current_displacement = new_pos - (entity_pixel_position);
         sqdist_to_dest = m::dot(current_displacement, current_displacement);
         m::Vec3 best_so_far = entity_pixel_position;
         we_found_one = false;

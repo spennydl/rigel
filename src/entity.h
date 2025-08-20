@@ -96,6 +96,7 @@ struct Entity
     m::Vec3 position;
     m::Vec3 velocity;
     m::Vec3 acceleration;
+    m::Vec3 old_accel;
 
     ZeroCrossTrigger facing_dir;
     ResourceId animations_id;

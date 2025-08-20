@@ -45,8 +45,8 @@ constexpr static EntityId ENTITY_ID_NONE = -1;
 // TODO: is this a good idea?
 constexpr static EntityId PLAYER_ENTITY_ID = 0;
 
-constexpr static i64 UPDATE_TIME_NS = 16666667;//8333333;
-constexpr static i64 RENDER_TIME_NS = 16666667;
+constexpr static i64 UPDATE_TIME_NS = 16680567;//8333333;
+constexpr static i64 RENDER_TIME_NS = 16680567;
 
 
 }

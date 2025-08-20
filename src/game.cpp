@@ -314,31 +314,26 @@ simulate_one_tick(mem::GameMem& memory, GameState* game_state, f32 dt, render::B
 
                 update_zero_cross_trigger(&entity->facing_dir, entity->velocity.x);
 
-                /*
-                auto player_rect = render::push_render_item<render::RectangleItem>(entity_batch_buffer);
-                player_rect->min = entity->position;
-                player_rect->max = entity->position + (2 * entity->colliders->aabbs[0].extents);
-                player_rect->color_and_strength = {1, 1, 0, 1};
-                */
-
                 auto animation = get_anim_resource(entity->animations_id);
                 auto current_frame = entity->animation.current_frame;
                 auto frame = animation->frames + current_frame;
 
-                auto other_rect = render::push_render_item<render::SpriteItem>(entity_batch_buffer);
-                other_rect->position = entity->position + m::Vec3 { 10, 10, 0 };
-                other_rect->sprite_id = entity->new_sprite_id;
-                other_rect->color_and_strength = {0, 0, 0, 0};
-                other_rect->sprite_segment_min = frame->spritesheet_min;
-                other_rect->sprite_segment_max = frame->spritesheet_max;
+                auto player_sprite = render::push_render_item<render::SpriteItem>(entity_batch_buffer);
+                player_sprite->position = m::floor(entity->position);
+                player_sprite->sprite_id = entity->new_sprite_id;
+                player_sprite->color_and_strength = {0, 0, 0, 0};
+                player_sprite->sprite_segment_min = frame->spritesheet_min;
+                player_sprite->sprite_segment_max = frame->spritesheet_max;
+                // TODO: would be nice if we had something better for this zero cross trigger business
                 if (entity->facing_dir.last_observed_sign < 0)
                 {
-                    auto tmp = other_rect->sprite_segment_min.x;
-                    other_rect->sprite_segment_min.x = other_rect->sprite_segment_max.x;
-                    other_rect->sprite_segment_max.x = tmp;
+                    auto tmp = player_sprite->sprite_segment_min.x;
+                    player_sprite->sprite_segment_min.x = player_sprite->sprite_segment_max.x;
+                    player_sprite->sprite_segment_max.x = tmp;
                 }
 
             } break;
+
             case EntityType_Bumpngo:
             {
                 m::Vec3 new_accel;

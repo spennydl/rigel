@@ -231,6 +231,7 @@ enum GameShaders {
     BACKGROUND_GRADIENT_SHADER,
     SIMPLE_RECTANGLE_SHADER,
     SIMPLE_SPRITE_SHADER,
+    SIMPLE_QUAD_SHADER,
 #ifdef RIGEL_DEBUG
     DEBUG_LINE_SHADER,
 #endif
@@ -299,6 +300,40 @@ default_atlas_push_sprite(u32 width, u32 height, ubyte* data);
 void
 default_atlas_rebuffer(mem::Arena* tmp_arena);
 
+// TODO(spencer): this name is bad since this type represents both
+// a "vertex" and a rectangle
+struct RectangleBufferVertex
+{
+    m::Vec2 world_min;
+    m::Vec2 world_max;
+    m::Vec4 color_and_strength;
+    m::Vec2 atlas_min;
+    m::Vec2 atlas_max;
+};
+
+struct QuadBufferVertex
+{
+    m::Vec4 p;
+    m::Vec2 uv;
+    m::Vec4 color_and_strength;
+};
+
+struct VertexBuffer
+{
+    GLuint vao;
+    GLuint vbo;
+    GLuint ebo;
+
+    u32 n_elems;
+};
+
+void 
+set_up_vertex_buffer_for_rectangles(VertexBuffer* buffer);
+void 
+set_up_vertex_buffer_for_quads(VertexBuffer* buffer);
+void
+buffer_rectangles(VertexBuffer* buffer, RectangleBufferVertex* rectangles, u32 n_verts, mem::Arena* scratch_arena);
+
 
 // TODO(spencer): this new strategy means that I need
 // two layers to the renderer: one that is the lowest-level
@@ -309,11 +344,20 @@ default_atlas_rebuffer(mem::Arena* tmp_arena);
 // I suppose this is the point of all of this work. We're decoupling
 // rendering from the game.
 
+// next things I need here:
+// - arbitrary quad rendering
+// - how does the existing tilemap renderer fit?
+//   - we need the concept of retained vertex buffers.
+//
+// I think that's all? With that in place I can rewrite
+// the pipeline in terms of the new renderer. Huh.
 #define RENDER_ITEM_LIST \
     X(Rectangle) \
+    X(Quad) \
     X(ClearBufferCmd) \
     X(SwitchTargetCmd) \
     X(UseShaderCmd) \
+    X(DrawVertexBufferCmd) \
     X(Sprite)
 
 enum RenderItemType
@@ -361,9 +405,17 @@ struct UseShaderCmdItem
     Shader* shader;
 };
 
+struct DrawVertexBufferCmdItem
+{
+    RenderItemType type;
+
+    VertexBuffer* buffer;
+};
+
 struct SpriteItem
 {
     RenderItemType type;
+
     SpriteId sprite_id;
     m::Vec4 color_and_strength;
     m::Vec3 position;
@@ -371,8 +423,21 @@ struct SpriteItem
     m::Vec2 sprite_segment_max;
 };
 
+struct QuadItem
+{
+    RenderItemType type;
+
+    m::Vec4 v1;
+    m::Vec4 v2;
+    m::Vec4 v3;
+    m::Vec4 v4;
+    m::Vec4 color_and_strength;
+    Texture texture;
+};
+
 struct BatchBuffer
 {
+    u32 rect_count;
     u32 quad_count;
     u32 items_in_buffer;
 
@@ -381,20 +446,22 @@ struct BatchBuffer
     ubyte* buffer;
 };
 
-struct VertexBuffer
+
+inline b32
+is_vertex_buffer_renderable(VertexBuffer* bufer)
 {
-    GLuint vao;
-    GLuint vbo;
-    GLuint ebo;
-};
+    return bufer->vao > 0;
+}
 
 template <typename T>
 inline RenderItemType
 get_render_item_type_for()
 {
+    static_assert(false, "T is not a render item");
     return RenderItemType_None;
 }
 
+// lmao i heard you like metaprogramming
 #define X(ItemName) \
 template <> \
 inline RenderItemType \
@@ -413,6 +480,9 @@ make_batch_buffer(mem::Arena* target_arena, u32 size_in_bytes = 1024);
 void
 submit_batch(BatchBuffer* batch, mem::Arena* temp_arena);
 
+void 
+test_shadow_map(mem::Arena* scratch_arena, TileMap* tile_map, m::Vec3 light_pos, i32 light_index);
+
 template<typename T, typename U>
 
 struct is_same
@@ -427,22 +497,36 @@ struct is_same<T, T>
 };
 
 template<typename T>
-struct is_quad_like
+struct is_rect_like
 {
     static constexpr i32 value = false;
 };
 
 template<>
-struct is_quad_like<RectangleItem>
+struct is_rect_like<RectangleItem>
 {
     static constexpr i32 value = true;
 };
 
 template<>
-struct is_quad_like<SpriteItem>
+struct is_rect_like<SpriteItem>
 {
     static constexpr i32 value = true;
 };
+
+//template<>
+//struct is_quad_like<QuadItem>
+//{
+//    static constexpr i32 value = true;
+//};
+
+inline b32
+is_renderable(RenderItemType type)
+{
+    return type == RenderItemType_Rectangle ||
+           type == RenderItemType_Sprite    ||
+           type == RenderItemType_Quad;
+}
 
 template <typename T>
 T*
@@ -453,11 +537,16 @@ push_render_item(BatchBuffer* buffer)
     auto ptr = buffer->buffer + buffer->buffer_used;
     T* result = new (ptr) T();
     result->type = get_render_item_type_for<T>();
+    assert(result->type != RenderItemType_None && "huh");
 
     buffer->buffer_used += sizeof(T);
     buffer->items_in_buffer += 1;
 
-    if constexpr (is_quad_like<T>::value)
+    if constexpr (is_rect_like<T>::value)
+    {
+        buffer->rect_count += 1;
+    }
+    else if constexpr (is_same<T, QuadItem>::value)
     {
         buffer->quad_count += 1;
     }
