@@ -4,6 +4,7 @@
 #include "mem.h"
 #include "resource.h"
 #include "rigelmath.h"
+#include "render.h"
 
 namespace rigel {
 
@@ -24,6 +25,7 @@ struct TileMap
     u16 tile_sprites[WORLD_SIZE_TILES];
 
     ResourceId tile_sheet;
+    render::VertexBuffer vert_buffer;
 
     TileMap* background;
     TileMap* decoration;
@@ -78,6 +80,10 @@ tiles_to_world(m::Vec2 tile_coord)
 
 void
 fill_tilemap_from_array(TileMap* map, f32* array, usize n_elems);
+
+void
+tilemap_set_up_and_buffer(TileMap* map, mem::Arena* temp_arena);
+
 }
 
 

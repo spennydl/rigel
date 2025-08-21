@@ -4,7 +4,6 @@
 #include "rigel.h"
 #include "resource.h"
 #include "collider.h"
-#include "world.h"
 #include "rigelmath.h"
 
 #include <glad/glad.h>
@@ -130,6 +129,7 @@ render_quad(Quad& quad, Viewport& viewport, int r, int g, int b);
 void
 render_tri(Tri& quad, Viewport& viewport, int r, int g, int b);
 
+#if 0
 struct BatchedTileRenderer {
     GLuint vao;
     usize n_tiles;
@@ -145,6 +145,7 @@ struct BatchedTileRenderer {
 
     void render(Viewport& viewport, Shader shader);
 };
+#endif
 
 constexpr static usize MAX_SPRITES_ON_SCREEN = 256;
 constexpr static usize MAX_ATLAS_SPRITES = 256;
@@ -170,6 +171,7 @@ struct ShaderLookup
     Shader shaders[64];
 };
 
+#if 0
 struct WorldChunkDrawData
 {
     i32 renderable;
@@ -178,12 +180,13 @@ struct WorldChunkDrawData
     BatchedTileRenderer deco_renderer;
 };
 void make_world_chunk_renderable(mem::Arena* scratch_mem, WorldChunk* world_chunk);
+#endif
 
 struct RenderableAssets
 {
     ShaderLookup* ready_shaders;
     TextureLookup* ready_textures;
-    WorldChunkDrawData* renderable_world_maps;
+    //WorldChunkDrawData* renderable_world_maps;
 };
 
 Shader* get_renderable_shader(TextResource vs_src, TextResource fs_src);
@@ -243,13 +246,18 @@ extern Shader game_shaders[N_GAME_SHADERS];
 void initialize_renderer(mem::Arena* gfx_arena, f32 fb_width, f32 fb_height);
 
 void begin_render(Viewport& vp, GameState* game_state, f32 fb_width, f32 fb_height);
-void lighting_pass(mem::Arena* scratch_arena, TileMap* tile_map);
 void render_background();
+#if 0
+void lighting_pass(mem::Arena* scratch_arena, TileMap* tile_map);
 void render_foreground_layer(Viewport& viewport, WorldChunk* world_chunk);
 void render_background_layer(Viewport& viewport, WorldChunk* world_chunk);
 void render_decoration_layer(Viewport& viewport, WorldChunk* world_chunk);
-void make_shadow_map_for_point_light(mem::Arena* scratch_arena, TileMap* tile_map, m::Vec3 light_pos, i32 light_idx);
 void render_all_entities(Viewport& viewport, WorldChunk* world_chunk);
+void make_shadow_map_for_point_light(mem::Arena* scratch_arena, TileMap* tile_map, m::Vec3 light_pos, i32 light_idx);
+
+void 
+test_shadow_map(mem::Arena* scratch_arena, TileMap* tile_map, m::Vec3 light_pos, i32 light_index);
+#endif
 
 void begin_render_to_internal_target();
 void begin_render_to_target(RenderTarget target);
@@ -480,8 +488,6 @@ make_batch_buffer(mem::Arena* target_arena, u32 size_in_bytes = 1024);
 void
 submit_batch(BatchBuffer* batch, mem::Arena* temp_arena);
 
-void 
-test_shadow_map(mem::Arena* scratch_arena, TileMap* tile_map, m::Vec3 light_pos, i32 light_index);
 
 template<typename T, typename U>
 

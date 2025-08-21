@@ -6,6 +6,7 @@
 #include "render.h"
 #include "debug.h"
 #include "input.h"
+#include "world.h"
 
 namespace rigel {
 
@@ -169,7 +170,8 @@ void switch_world_chunk(mem::GameMem& mem, GameState* state, i32 index)
     other_player->facing_dir = player->facing_dir;
 
     state->active_world_chunk = next_chunk;
-    render::make_world_chunk_renderable(&mem.frame_temp_arena, next_chunk);
+    // TODO(spencer): wtf do we do here? buffer or do this elsewhere?
+    //render::make_world_chunk_renderable(&mem.frame_temp_arena, next_chunk);
 }
 
 GameState*
@@ -182,7 +184,12 @@ load_game(mem::GameMem& memory)
     result->first_world_chunk = load_all_world_chunks(memory);
     result->active_world_chunk = result->first_world_chunk;
 
-    render::make_world_chunk_renderable(&memory.frame_temp_arena, result->active_world_chunk);
+    // TODO(spencer): This doesn't make sense here.
+    // We should ideally have a resident set of tile maps that is tracked somewhere,
+    // and we buffer them in/out as they come into range.
+    // This could (and probably will) be as simple as loading all of the tilemaps in
+    // a chapter when the chapter starts
+    tilemap_set_up_and_buffer(result->first_world_chunk->active_map, &memory.frame_temp_arena);
 
     return result;
 }

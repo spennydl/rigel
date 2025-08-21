@@ -56,4 +56,38 @@ dump_tile_map(const TileMap* tilemap)
     }
 }
 
+void
+tilemap_set_up_and_buffer(TileMap* map, mem::Arena* temp_arena)
+{
+    render::set_up_vertex_buffer_for_rectangles(&map->vert_buffer);
+
+    auto tile_rects = mem::make_simple_list<render::RectangleBufferVertex>(map->n_nonempty_tiles, temp_arena);
+
+    auto tile_dim = m::Vec3 { TILE_WIDTH_PIXELS, TILE_WIDTH_PIXELS, 0 };
+
+    for (u32 y = 0; y < WORLD_HEIGHT_TILES; y++)
+    {
+        for (u32 x = 0; x < WORLD_WIDTH_TILES; x++)
+        {
+            u32 i = tile_to_index(x, y);
+            if (map->tiles[i] == TileType::EMPTY)
+            {
+                continue;
+            }
+
+            auto world_min = tiles_to_world(x, y);
+            auto world_max = world_min + tile_dim;
+
+            auto rect = simple_list_append_new(&tile_rects);
+            rect->world_min.x = world_min.x;
+            rect->world_min.y = world_min.y;
+            rect->world_max.x = world_max.x;
+            rect->world_max.y = world_max.y;
+            rect->color_and_strength = m::Vec4{1, 0, 0, 1};
+        }
+    }
+
+    render::buffer_rectangles(&map->vert_buffer, tile_rects.items, tile_rects.length, temp_arena);
+}
+
 } // namespace rigel

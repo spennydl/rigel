@@ -330,28 +330,34 @@ int main()
 
             SDL_GetCurrentTime(&last_update_time);
 
-            auto world_chunk = game_state->active_world_chunk;
 
             render::begin_render(viewport, game_state, w, h);
 
-            render::lighting_pass(&memory.frame_temp_arena, world_chunk->active_map);
+            //render::lighting_pass(&memory.frame_temp_arena, world_chunk->active_map);
 
             render::begin_render_to_internal_target();
 
             render::render_background();
 
+#if 0
             render::render_background_layer(viewport, world_chunk);
 
             render::render_foreground_layer(viewport, world_chunk);
             render::render_decoration_layer(viewport, world_chunk);
-
+#endif
             //auto player = world_chunk->entities + world_chunk->player_id;
 
-            auto shader_item = render::push_render_item<render::UseShaderCmdItem>(entity_batch_buffer);
-            shader_item->shader = &render::game_shaders[render::SIMPLE_RECTANGLE_SHADER];
-            auto vert_buf_item = render::push_render_item<render::DrawVertexBufferCmdItem>(entity_batch_buffer);
-            vert_buf_item->buffer = &vertbuf;
+            //auto shader_item = render::push_render_item<render::UseShaderCmdItem>(entity_batch_buffer);
+            //shader_item->shader = &render::game_shaders[render::SIMPLE_RECTANGLE_SHADER];
+            //auto vert_buf_item = render::push_render_item<render::DrawVertexBufferCmdItem>(entity_batch_buffer);
+            //vert_buf_item->buffer = &vertbuf;
             
+            auto world_chunk = game_state->active_world_chunk;
+            auto shader_switch = render::push_render_item<render::UseShaderCmdItem>(entity_batch_buffer);
+            shader_switch->shader = &render::game_shaders[render::SIMPLE_RECTANGLE_SHADER];
+            auto render_buffer = render::push_render_item<render::DrawVertexBufferCmdItem>(entity_batch_buffer);
+            render_buffer->buffer = &world_chunk->active_map->vert_buffer;
+
             render::submit_batch(entity_batch_buffer, &memory.frame_temp_arena);
 
             //render::test_shadow_map(&memory.frame_temp_arena, world_chunk->active_map, player->position + m::Vec3{4, 8}, 0);
@@ -386,7 +392,6 @@ int main()
 //
             //render::render_background_layer(viewport, world_chunk);
 //
-            //render::render_all_entities(viewport, world_chunk);
 //
             //render::render_foreground_layer(viewport, world_chunk);
             //render::render_decoration_layer(viewport, world_chunk);

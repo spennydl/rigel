@@ -3,7 +3,6 @@
 
 #include "mem.h"
 #include "rigel.h"
-#include "tilemap.h"
 #include "rigelmath.h"
 
 namespace rigel {

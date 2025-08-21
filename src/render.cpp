@@ -127,7 +127,7 @@ shader_set_uniform_1i(Shader* shader, const char* name, i32 value)
     glUniform1i(glGetUniformLocation(shader->id, name), value);
 }
 
-// TODO(spencer): does this fit with the new renderer?
+#if 0
 BatchedTileRenderer::BatchedTileRenderer(mem::Arena& scratch_arena, TileMap* tilemap, ImageResource atlas_image)
     : vao(0), n_tiles(tilemap->n_nonempty_tiles)
 {
@@ -247,7 +247,7 @@ void BatchedTileRenderer::render(Viewport& viewport, Shader shader)
     glBindVertexArray(0);
     glUseProgram(0);
 }
-
+#endif
 Texture make_texture(TextureConfig config)
 {
     Texture tex;
@@ -540,6 +540,7 @@ Texture* get_renderable_texture(ResourceId sprite_id)
     assert(false && "out of map entries");
 }
 
+#if 0
 void make_world_chunk_renderable(mem::Arena* scratch_arena, WorldChunk* world_chunk)
 {
     RenderableAssets* assets = reinterpret_cast<RenderableAssets*>(render_state.gfx_arena->mem_begin);
@@ -560,6 +561,7 @@ void make_world_chunk_renderable(mem::Arena* scratch_arena, WorldChunk* world_ch
 
     draw_data->renderable = 1;
 }
+#endif
 
 const char* simple_rect_vs = R"SRC(
 #version 400 core
@@ -837,6 +839,9 @@ void initialize_renderer(mem::Arena* gfx_arena, f32 fb_width, f32 fb_height)
 {
     render_state.gfx_arena = gfx_arena;
 
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
     // global UBO
     glGenBuffers(1, &render_state.global_ubo);
     glBindBuffer(GL_UNIFORM_BUFFER, render_state.global_ubo);
@@ -904,7 +909,7 @@ void initialize_renderer(mem::Arena* gfx_arena, f32 fb_width, f32 fb_height)
         assets->ready_textures->map[i].resource_id = RESOURCE_ID_NONE;
         assets->ready_textures->map[i].texture_idx = RESOURCE_ID_NONE;
     }
-    assets->renderable_world_maps = gfx_arena->alloc_array<WorldChunkDrawData>(2);
+    //assets->renderable_world_maps = gfx_arena->alloc_array<WorldChunkDrawData>(2);
 
     ImageResource bg_image = load_image_resource("resource/image/Clouds/Clouds 7/1.png");
     render_state.bg_image_id = bg_image.resource_id;
@@ -967,6 +972,7 @@ void begin_render(Viewport& viewport, GameState* game_state, f32 fb_width, f32 f
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
 }
 
+#if 0
 void lighting_pass(mem::Arena* scratch_arena, TileMap* tile_map)
 {
     // TODO
@@ -1003,6 +1009,7 @@ void lighting_pass(mem::Arena* scratch_arena, TileMap* tile_map)
     end_render_to_target();
 
 }
+#endif
 
 void render_background()
 {
@@ -1040,6 +1047,7 @@ void render_background()
     glBindVertexArray(0);
 }
 
+#if 0
 void render_background_layer(Viewport& viewport, WorldChunk* world_chunk)
 {
     RenderableAssets* assets = reinterpret_cast<RenderableAssets*>(render_state.gfx_arena->mem_begin);
@@ -1072,7 +1080,9 @@ void render_decoration_layer(Viewport& viewport, WorldChunk* world_chunk)
     glUniform1f(glGetUniformLocation(game_shaders[TILEMAP_DRAW_SHADER].id, "dimmer"), 1.0f);
     draw_data->deco_renderer.render(viewport, game_shaders[TILEMAP_DRAW_SHADER]);
 }
+#endif
 
+#if 0
 void make_shadow_map_for_point_light(mem::Arena* scratch_arena, TileMap* tile_map, m::Vec3 light_pos, i32 light_index)
 {
     usize n_tiles = tile_map->n_nonempty_tiles;
@@ -1183,6 +1193,7 @@ void make_shadow_map_for_point_light(mem::Arena* scratch_arena, TileMap* tile_ma
 
     glDrawElements(GL_TRIANGLES, 6 * quad_idx, GL_UNSIGNED_INT, 0);
 }
+#endif
 
 void render_all_entities(Viewport& viewport, WorldChunk* world_chunk)
 {
