@@ -68,6 +68,8 @@ shader_load_from_src(Shader* shader, const char* vs_src, const char* fs_src);
 void
 shader_set_uniform_m4v(Shader* shader, const char* name, m::Mat4 mat);
 void
+shader_set_uniform_2fv(Shader* shader, const char* name, m::Vec2 vec);
+void
 shader_set_uniform_1i(Shader* shader, const char* name, i32 value);
 bool
 check_shader_status(GLuint id, bool prog = false);
@@ -129,24 +131,6 @@ render_quad(Quad& quad, Viewport& viewport, int r, int g, int b);
 void
 render_tri(Tri& quad, Viewport& viewport, int r, int g, int b);
 
-#if 0
-struct BatchedTileRenderer {
-    GLuint vao;
-    usize n_tiles;
-    ResourceId tile_sheet;
-
-    // TODO: Tilemaps will never change. Why store them like I do? Why not store the geometry
-    // we make here instead?
-    //
-    // On second thought we absolutely need them in a grid format for spatial queries. Still,
-    // might be nice to keep some around.
-    BatchedTileRenderer(mem::Arena& scratch_arena, TileMap* tilemap, ImageResource atlas_image);
-    BatchedTileRenderer() : vao(0), n_tiles(0), tile_sheet(0) {}
-
-    void render(Viewport& viewport, Shader shader);
-};
-#endif
-
 constexpr static usize MAX_SPRITES_ON_SCREEN = 256;
 constexpr static usize MAX_ATLAS_SPRITES = 256;
 
@@ -171,22 +155,10 @@ struct ShaderLookup
     Shader shaders[64];
 };
 
-#if 0
-struct WorldChunkDrawData
-{
-    i32 renderable;
-    BatchedTileRenderer fg_renderer;
-    BatchedTileRenderer bg_renderer;
-    BatchedTileRenderer deco_renderer;
-};
-void make_world_chunk_renderable(mem::Arena* scratch_mem, WorldChunk* world_chunk);
-#endif
-
 struct RenderableAssets
 {
     ShaderLookup* ready_shaders;
     TextureLookup* ready_textures;
-    //WorldChunkDrawData* renderable_world_maps;
 };
 
 Shader* get_renderable_shader(TextResource vs_src, TextResource fs_src);
@@ -247,14 +219,12 @@ void initialize_renderer(mem::Arena* gfx_arena, f32 fb_width, f32 fb_height);
 
 void begin_render(Viewport& vp, GameState* game_state, f32 fb_width, f32 fb_height);
 void render_background();
-#if 0
-void lighting_pass(mem::Arena* scratch_arena, TileMap* tile_map);
-void render_foreground_layer(Viewport& viewport, WorldChunk* world_chunk);
-void render_background_layer(Viewport& viewport, WorldChunk* world_chunk);
-void render_decoration_layer(Viewport& viewport, WorldChunk* world_chunk);
-void render_all_entities(Viewport& viewport, WorldChunk* world_chunk);
-void make_shadow_map_for_point_light(mem::Arena* scratch_arena, TileMap* tile_map, m::Vec3 light_pos, i32 light_idx);
 
+#if 0
+void 
+lighting_pass(mem::Arena* scratch_arena, TileMap* tile_map);
+void 
+make_shadow_map_for_point_light(mem::Arena* scratch_arena, TileMap* tile_map, m::Vec3 light_pos, i32 light_idx);
 void 
 test_shadow_map(mem::Arena* scratch_arena, TileMap* tile_map, m::Vec3 light_pos, i32 light_index);
 #endif
@@ -365,6 +335,7 @@ buffer_rectangles(VertexBuffer* buffer, RectangleBufferVertex* rectangles, u32 n
     X(ClearBufferCmd) \
     X(SwitchTargetCmd) \
     X(UseShaderCmd) \
+    X(UseTextureCmd) \
     X(DrawVertexBufferCmd) \
     X(Sprite)
 
@@ -411,6 +382,13 @@ struct UseShaderCmdItem
     RenderItemType type;
 
     Shader* shader;
+};
+
+struct UseTextureCmdItem
+{
+    RenderItemType type;
+
+    ResourceId resource_id;
 };
 
 struct DrawVertexBufferCmdItem

@@ -9,6 +9,7 @@
 namespace rigel {
 
 #define TILE_WIDTH_PIXELS 8
+#define TILE_HEIGHT_PIXELS 8
 #define WORLD_WIDTH_TILES 40
 #define WORLD_HEIGHT_TILES 23
 #define WORLD_SIZE_TILES (WORLD_WIDTH_TILES * WORLD_HEIGHT_TILES)
@@ -21,6 +22,8 @@ enum class TileType
 struct TileMap
 {
     usize n_nonempty_tiles;
+    
+    // TODO(spencer): why are these different?
     TileType tiles[WORLD_SIZE_TILES];
     u16 tile_sprites[WORLD_SIZE_TILES];
 

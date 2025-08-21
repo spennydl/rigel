@@ -35,6 +35,7 @@ struct RenderState
     VertexBuffer sprite_buffer;
     VertexBuffer quad_buffer;
     SpriteAtlas sprite_atlas;
+    ResourceId active_texture;
     Shader* active_shader;
 
     Rectangle current_viewport;
@@ -121,133 +122,19 @@ shader_set_uniform_m4v(Shader* shader, const char* name, m::Mat4 mat)
 }
 
 void
+shader_set_uniform_2fv(Shader* shader, const char* name, m::Vec2 vec)
+{
+    glUseProgram(shader->id);
+    glUniform2fv(glGetUniformLocation(shader->id, name), 1, reinterpret_cast<f32*>(&vec));
+}
+
+void
 shader_set_uniform_1i(Shader* shader, const char* name, i32 value)
 {
     glUseProgram(shader->id);
     glUniform1i(glGetUniformLocation(shader->id, name), value);
 }
 
-#if 0
-BatchedTileRenderer::BatchedTileRenderer(mem::Arena& scratch_arena, TileMap* tilemap, ImageResource atlas_image)
-    : vao(0), n_tiles(tilemap->n_nonempty_tiles)
-{
-    usize quad_elems = 20;
-    usize idx_elems = 6;
-
-    f32* verts = scratch_arena.alloc_array<f32>(quad_elems * n_tiles);
-    u32* indices = scratch_arena.alloc_array<usize>(idx_elems * n_tiles);
-
-    usize tiles_per_row = atlas_image.width / 8;
-    usize tiles_per_col = atlas_image.height / 8;
-
-    f32 u_step = 1.0 / (f32)tiles_per_row;
-    f32 v_step = 1.0 / (f32)tiles_per_col;
-
-    usize internal_idx = 0;
-    for (usize y = 0; y < WORLD_HEIGHT_TILES; y++) {
-        for (usize x = 0; x < WORLD_WIDTH_TILES; x++) {
-            usize i = (y * WORLD_WIDTH_TILES) + x;
-            if (tilemap->tiles[i] == TileType::EMPTY) {
-                continue;
-            }
-
-            usize tile_sprite = tilemap->tile_sprites[i] - 1;
-
-            f32 u = (tile_sprite % tiles_per_row) * u_step;
-            f32 v = (tile_sprite / tiles_per_row) * v_step;
-
-            usize quad_start = internal_idx * quad_elems;
-            usize idx_start = internal_idx * idx_elems;
-
-            verts[quad_start] = x;
-            verts[quad_start + 1] = y;
-            verts[quad_start + 2] = 0.0;
-            verts[quad_start + 3] = u;
-            verts[quad_start + 4] = v;
-
-            verts[quad_start + 5] = x;
-            verts[quad_start + 6] = y + 1;
-            verts[quad_start + 7] = 0.0;
-            verts[quad_start + 8] = u;
-            verts[quad_start + 9] = v + v_step;
-
-            verts[quad_start + 10] = x + 1;
-            verts[quad_start + 11] = y;
-            verts[quad_start + 12] = 0.0;
-            verts[quad_start + 13] = u + u_step;
-            verts[quad_start + 14] = v;
-
-            verts[quad_start + 15] = x + 1;
-            verts[quad_start + 16] = y + 1;
-            verts[quad_start + 17] = 0.0;
-            verts[quad_start + 18] = u + u_step;
-            verts[quad_start + 19] = v + v_step;
-
-            usize elem_idx_start = quad_start / 5;
-            indices[idx_start]     = elem_idx_start + 0;
-            indices[idx_start + 1] = elem_idx_start + 1;
-            indices[idx_start + 2] = elem_idx_start + 2;
-            indices[idx_start + 3] = elem_idx_start + 1;
-            indices[idx_start + 4] = elem_idx_start + 2;
-            indices[idx_start + 5] = elem_idx_start + 3;
-
-            internal_idx += 1;
-        }
-    }
-    std::cout << "There were " << n_tiles << " tiles and we found " << internal_idx << " of them" << std::endl;
-
-    GLuint vbo;
-    glGenBuffers(1, &vbo);
-    GLuint ebo;
-    glGenBuffers(1, &ebo);
-
-    glGenVertexArrays(1, &this->vao);
-    glBindVertexArray(this->vao);
-
-    glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferData(GL_ARRAY_BUFFER, n_tiles * quad_elems * sizeof(f32), verts, GL_STATIC_DRAW);
-
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, n_tiles * idx_elems * sizeof(u32), indices, GL_STATIC_DRAW);
-
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3*sizeof(float)));
-    glEnableVertexAttribArray(1);
-
-    glBindVertexArray(0);
-
-    tile_sheet = atlas_image.resource_id;
-}
-
-void BatchedTileRenderer::render(Viewport& viewport, Shader shader)
-{
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-    m::Mat4 world_transform =
-        m::translation_by(m::Vec3 {0.0f, -WORLD_HEIGHT_TILES, 0.0f}) *
-        m::scale_by(m::Vec3 {8.0f, -8.0f, 0.0f});
-
-    Texture* tex = get_renderable_texture(tile_sheet);
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, tex->id);
-
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D_ARRAY, render_state.shadowmap_target.target_texture.id);
-
-    glUseProgram(shader.id);
-    glUniformMatrix4fv(glGetUniformLocation(shader.id, "world"), 1, GL_FALSE, reinterpret_cast<f32*>(&world_transform));
-    glUniform1i(glGetUniformLocation(shader.id, "atlas"), 0);
-    glUniform1i(glGetUniformLocation(shader.id, "shadow_map"), 1);
-
-    glBindVertexArray(vao);
-    glDrawElements(GL_TRIANGLES, 6 * n_tiles, GL_UNSIGNED_INT, 0);
-
-    glBindVertexArray(0);
-    glUseProgram(0);
-}
-#endif
 Texture make_texture(TextureConfig config)
 {
     Texture tex;
@@ -499,8 +386,6 @@ Shader* get_renderable_shader(TextResource vs_src, TextResource fs_src)
     return result;
 }
 
-// TODO: can have a global RenderableAssets pointer since
-// gfx arena will never move.
 Texture* get_renderable_texture(ResourceId sprite_id)
 {
     RenderableAssets* assets = reinterpret_cast<RenderableAssets*>(render_state.gfx_arena->mem_begin);
@@ -575,6 +460,7 @@ out vec4 color;
 out vec2 tex_uv;
 
 uniform mat4 screen_transform;
+uniform vec2 tex_dims;
 
 void main()
 {
@@ -605,7 +491,7 @@ void main()
 
     color = color_and_strength;
     // TODO(spencer): prolly shouldn't hard code this
-    tex_uv = atlas_coord / 512.0f;
+    tex_uv = atlas_coord / tex_dims;
 })SRC";
 
 
@@ -838,6 +724,7 @@ void render_debug_lines()
 void initialize_renderer(mem::Arena* gfx_arena, f32 fb_width, f32 fb_height)
 {
     render_state.gfx_arena = gfx_arena;
+    render_state.active_texture = RESOURCE_ID_NONE;
 
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -1595,9 +1482,20 @@ do_draw_elem_buffer(u32 n_elems)
     auto shader = render_state.active_shader;
     glUseProgram(shader->id);
 
-    //std::cout << "GL_TEXTURE1 is " << GL_TEXTURE1 << std::endl;
     glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, render_state.sprite_atlas.texture.id);
+    if (render_state.active_texture == RESOURCE_ID_NONE)
+    {
+        glBindTexture(GL_TEXTURE_2D, render_state.sprite_atlas.texture.id);
+        shader_set_uniform_2fv(shader, "tex_dims", m::Vec2 {512.0f, 512.0f});
+    }
+    else
+    {
+        auto resource = get_image_resource(render_state.active_texture);
+        auto tex = get_renderable_texture(render_state.active_texture);
+        glBindTexture(GL_TEXTURE_2D, tex->id);
+        shader_set_uniform_2fv(shader, "tex_dims", m::Vec2 {(f32)resource.width, (f32)resource.height});
+    }
+
     m::Mat4 screen_transform =
         m::scale_by(m::Vec3 {(2.0f / render_state.current_viewport.w), (2.0f / render_state.current_viewport.h), 0.0f})
         * m::translation_by(m::Vec3 { -1.0f, -1.0f });
@@ -1836,6 +1734,15 @@ submit_batch(BatchBuffer* batch, mem::Arena* temp_arena)
                 render_state.active_shader = shader_item->shader;
                 
                 item = reinterpret_cast<Item*>(shader_item + 1);
+            } break;
+
+            case RenderItemType_UseTextureCmd:
+            {
+                auto tex_item = reinterpret_cast<UseTextureCmdItem*>(item);
+
+                render_state.active_texture = tex_item->resource_id;
+                
+                item = reinterpret_cast<Item*>(tex_item + 1);
             } break;
 
             case RenderItemType_DrawVertexBufferCmd:

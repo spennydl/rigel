@@ -354,9 +354,16 @@ int main()
             
             auto world_chunk = game_state->active_world_chunk;
             auto shader_switch = render::push_render_item<render::UseShaderCmdItem>(entity_batch_buffer);
-            shader_switch->shader = &render::game_shaders[render::SIMPLE_RECTANGLE_SHADER];
+            shader_switch->shader = &render::game_shaders[render::SIMPLE_SPRITE_SHADER];
+
+            auto tex_switch = render::push_render_item<render::UseTextureCmdItem>(entity_batch_buffer);
+            tex_switch->resource_id = world_chunk->active_map->tile_sheet;
+
             auto render_buffer = render::push_render_item<render::DrawVertexBufferCmdItem>(entity_batch_buffer);
             render_buffer->buffer = &world_chunk->active_map->vert_buffer;
+
+            auto tex_undo = render::push_render_item<render::UseTextureCmdItem>(entity_batch_buffer);
+            tex_undo->resource_id = RESOURCE_ID_NONE;
 
             render::submit_batch(entity_batch_buffer, &memory.frame_temp_arena);
 

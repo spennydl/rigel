@@ -63,7 +63,10 @@ tilemap_set_up_and_buffer(TileMap* map, mem::Arena* temp_arena)
 
     auto tile_rects = mem::make_simple_list<render::RectangleBufferVertex>(map->n_nonempty_tiles, temp_arena);
 
-    auto tile_dim = m::Vec3 { TILE_WIDTH_PIXELS, TILE_WIDTH_PIXELS, 0 };
+    auto tile_dim = m::Vec3 { TILE_WIDTH_PIXELS, TILE_HEIGHT_PIXELS, 0 };
+
+    auto tile_sheet = get_image_resource(map->tile_sheet);
+    auto tiles_per_row = tile_sheet.width / TILE_WIDTH_PIXELS;
 
     for (u32 y = 0; y < WORLD_HEIGHT_TILES; y++)
     {
@@ -74,6 +77,11 @@ tilemap_set_up_and_buffer(TileMap* map, mem::Arena* temp_arena)
             {
                 continue;
             }
+            auto tile_idx = map->tile_sprites[i] - 1;
+            auto tile_y = (tile_idx / tiles_per_row) * TILE_WIDTH_PIXELS;
+            auto tile_x = (tile_idx % tiles_per_row) * TILE_HEIGHT_PIXELS;
+            auto tilesheet_min = m::Vec2 {(f32)tile_x, (f32)tile_y};
+            auto tilesheet_max = tilesheet_min + m::Vec2 { TILE_WIDTH_PIXELS, TILE_HEIGHT_PIXELS };
 
             auto world_min = tiles_to_world(x, y);
             auto world_max = world_min + tile_dim;
@@ -83,7 +91,9 @@ tilemap_set_up_and_buffer(TileMap* map, mem::Arena* temp_arena)
             rect->world_min.y = world_min.y;
             rect->world_max.x = world_max.x;
             rect->world_max.y = world_max.y;
-            rect->color_and_strength = m::Vec4{1, 0, 0, 1};
+            rect->color_and_strength = m::Vec4{0, 0, 0, 0};
+            rect->atlas_min = tilesheet_min;
+            rect->atlas_max = tilesheet_max;
         }
     }
 
