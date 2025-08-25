@@ -107,31 +107,7 @@ struct Texture
 Texture make_texture(TextureConfig config);
 Texture make_array_texture_from_vstrip(ImageResource image, usize n_images);
 
-struct Quad
-{
-    rigel::Rectangle dims;
-    Shader shader;
-    GLuint vao;
-
-    // Quad(Rectangle rect);
-    Quad(rigel::Rectangle rect, Shader shader);
-};
-
-struct Tri
-{
-    GLuint vao;
-    m::Vec3 verts[3];
-    Shader shader;
-
-    // Quad(Rectangle rect);
-    Tri(m::Vec3 v1, m::Vec3 v2, m::Vec3 v3, Shader shader);
-};
-
-void
-render_quad(Quad& quad, Viewport& viewport, int r, int g, int b);
-void
-render_tri(Tri& quad, Viewport& viewport, int r, int g, int b);
-
+// ??
 constexpr static usize MAX_SPRITES_ON_SCREEN = 256;
 constexpr static usize MAX_ATLAS_SPRITES = 256;
 
@@ -143,6 +119,9 @@ struct ResourceTextureMapping
     i32 texture_idx;
 };
 
+// TODO(spencer): this could be fleshed out to a texture cache. Thing is,
+// I'm not sure I actually need one. It has been useful to have a lookup
+// for textures, though.
 struct TextureLookup
 {
     usize next_free_texture_idx;
@@ -150,21 +129,14 @@ struct TextureLookup
     Texture textures[64];
 };
 
-struct ShaderLookup
-{
-    usize next_free_shader_idx;
-    Shader shaders[64];
-};
-
 struct RenderableAssets
 {
-    ShaderLookup* ready_shaders;
     TextureLookup* ready_textures;
 };
 
-Shader* get_renderable_shader(TextResource vs_src, TextResource fs_src);
 Texture* get_renderable_texture(ResourceId sprite_id);
 
+// TODO(spencer): chopping block
 struct GpuQuad
 {
     GLuint vao;
@@ -182,6 +154,8 @@ struct RenderTarget
 };
 
 RenderTarget* get_default_render_target();
+RenderTarget make_render_to_texture_target(i32 w, i32 h);
+RenderTarget make_render_to_array_texture_target(i32 w, i32 h, i32 layers, usize format);
 
 // TODO
 struct UniformLight
@@ -220,15 +194,6 @@ void initialize_renderer(mem::Arena* gfx_arena, f32 fb_width, f32 fb_height);
 
 void begin_render(Viewport& vp, GameState* game_state, f32 fb_width, f32 fb_height);
 void render_background();
-
-#if 0
-void 
-lighting_pass(mem::Arena* scratch_arena, TileMap* tile_map);
-void 
-make_shadow_map_for_point_light(mem::Arena* scratch_arena, TileMap* tile_map, m::Vec3 light_pos, i32 light_idx);
-void 
-test_shadow_map(mem::Arena* scratch_arena, TileMap* tile_map, m::Vec3 light_pos, i32 light_index);
-#endif
 
 void begin_render_to_internal_target();
 void begin_render_to_target(RenderTarget target);
@@ -471,9 +436,7 @@ make_batch_buffer(mem::Arena* target_arena, u32 size_in_bytes = 1024);
 void
 submit_batch(BatchBuffer* batch, mem::Arena* temp_arena);
 
-
 template<typename T, typename U>
-
 struct is_same
 {
     static constexpr i32 value = false;
@@ -502,12 +465,6 @@ struct is_rect_like<SpriteItem>
 {
     static constexpr i32 value = true;
 };
-
-//template<>
-//struct is_quad_like<QuadItem>
-//{
-//    static constexpr i32 value = true;
-//};
 
 inline b32
 is_renderable(RenderItemType type)

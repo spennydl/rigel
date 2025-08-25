@@ -162,35 +162,6 @@ Texture make_texture(TextureConfig config)
     return tex;
 }
 
-Quad::Quad(rigel::Rectangle rect, Shader shader)
-  : dims(rect)
-  , shader(shader)
-{
-    GLuint vbo;
-    glGenBuffers(1, &vbo);
-    GLuint ebo;
-    glGenBuffers(1, &ebo);
-
-    glGenVertexArrays(1, &this->vao);
-    glBindVertexArray(this->vao);
-
-    glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(QUAD_VERTS), QUAD_VERTS, GL_STATIC_DRAW);
-
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
-    glBufferData(
-      GL_ELEMENT_ARRAY_BUFFER, sizeof(QUAD_IDXS), QUAD_IDXS, GL_STATIC_DRAW);
-
-    glVertexAttribPointer(
-      0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(
-      1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
-    glEnableVertexAttribArray(1);
-
-    glBindVertexArray(0);
-}
-
 Texture make_array_texture_from_vstrip(ImageResource image, TextureConfig config)
 {
     Texture tex;
@@ -240,84 +211,6 @@ Texture alloc_array_texture(usize w, usize h, usize layers, usize internal_forma
                  0,
                  internal_format, GL_UNSIGNED_BYTE, nullptr);
     return tex;
-}
-
-void
-render_quad(Quad& quad, Viewport& vp, int r, int g, int b)
-{
-    auto screen_transform = vp.get_screen_transform();
-    auto quad_world = quad.dims.get_world_transform();
-
-    glUseProgram(quad.shader.id);
-    glUniformMatrix4fv(glGetUniformLocation(quad.shader.id, "screen"),
-                       1,
-                       false,
-                       reinterpret_cast<f32*>(&screen_transform));
-    glUniformMatrix4fv(glGetUniformLocation(quad.shader.id, "world"),
-                       1,
-                       false,
-                       reinterpret_cast<f32*>(&quad_world));
-    glUniform4f(glGetUniformLocation(quad.shader.id, "color"),
-                (float)r / 255.0,
-                (float)g / 255.0,
-                (float)b / 255.0,
-                1.0);
-
-    glBindVertexArray(quad.vao);
-    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-    glBindVertexArray(0);
-}
-
-Tri::Tri(m::Vec3 v1, m::Vec3 v2, m::Vec3 v3, Shader shader)
-  : shader(shader)
-{
-
-    verts[0] = v1;
-    verts[1] = v2;
-    verts[2] = v3;
-    usize idxs[3] = { 0, 1, 2 };
-
-    GLuint vbo;
-    glGenBuffers(1, &vbo);
-    GLuint ebo;
-    glGenBuffers(1, &ebo);
-
-    glGenVertexArrays(1, &this->vao);
-    glBindVertexArray(this->vao);
-
-    glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_STATIC_DRAW);
-
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
-    glBufferData(
-      GL_ELEMENT_ARRAY_BUFFER, sizeof(idxs), idxs, GL_STATIC_DRAW);
-
-    glVertexAttribPointer(
-      0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(0);
-
-    glBindVertexArray(0);
-}
-
-void
-render_tri(Tri& tri, Viewport& vp, int r, int g, int b)
-{
-    auto screen_transform = vp.get_screen_transform();
-
-    glUseProgram(tri.shader.id);
-    glUniformMatrix4fv(glGetUniformLocation(tri.shader.id, "screen"),
-                       1,
-                       false,
-                       reinterpret_cast<f32*>(&screen_transform));
-    glUniform4f(glGetUniformLocation(tri.shader.id, "color"),
-                (float)r / 255.0,
-                (float)g / 255.0,
-                (float)b / 255.0,
-                1.0);
-
-    glBindVertexArray(tri.vao);
-    glDrawElements(GL_TRIANGLES, 3, GL_UNSIGNED_INT, 0);
-    glBindVertexArray(0);
 }
 
 void
@@ -374,20 +267,6 @@ void GpuQuad::initialize()
     glBindVertexArray(0);
 }
 
-// TODO(spencer): the next 2 functions are hella half-baked.
-Shader* get_renderable_shader(TextResource vs_src, TextResource fs_src)
-{
-    RenderableAssets* assets = reinterpret_cast<RenderableAssets*>(render_state.gfx_arena->mem_begin);
-    ShaderLookup* ready_shaders = assets->ready_shaders;
-
-    usize next_idx = ready_shaders->next_free_shader_idx;
-    assert(next_idx < 64 && "Too many shaders at once");
-    Shader* result = ready_shaders->shaders + next_idx;
-    shader_load_from_src(result, vs_src.text, fs_src.text);
-
-    return result;
-}
-
 Texture* get_renderable_texture(ResourceId sprite_id)
 {
     RenderableAssets* assets = reinterpret_cast<RenderableAssets*>(render_state.gfx_arena->mem_begin);
@@ -426,29 +305,6 @@ Texture* get_renderable_texture(ResourceId sprite_id)
 
     assert(false && "out of map entries");
 }
-
-#if 0
-void make_world_chunk_renderable(mem::Arena* scratch_arena, WorldChunk* world_chunk)
-{
-    RenderableAssets* assets = reinterpret_cast<RenderableAssets*>(render_state.gfx_arena->mem_begin);
-    WorldChunkDrawData* draw_data = assets->renderable_world_maps + world_chunk->level_index;
-
-    if (draw_data->renderable) {
-        return;
-    }
-
-    TileMap* map = world_chunk->active_map;
-    ImageResource fg_tile_set = get_image_resource(map->tile_sheet);
-    ImageResource bg_tile_set = get_image_resource(map->background->tile_sheet);
-    ImageResource deco_tile_set = get_image_resource(map->decoration->tile_sheet);
-
-    draw_data->fg_renderer = BatchedTileRenderer(*scratch_arena, map, fg_tile_set);
-    draw_data->bg_renderer = BatchedTileRenderer(*scratch_arena, map->background, bg_tile_set);
-    draw_data->deco_renderer = BatchedTileRenderer(*scratch_arena, map->decoration, deco_tile_set);
-
-    draw_data->renderable = 1;
-}
-#endif
 
 const char* simple_rect_vs = R"SRC(
 #version 400 core
@@ -784,14 +640,14 @@ void initialize_renderer(mem::Arena* gfx_arena, f32 fb_width, f32 fb_height)
 
     render_state.screen.initialize();
 
-    RenderableAssets* assets = reinterpret_cast<RenderableAssets*>(gfx_arena->mem_begin);
-    assets->ready_shaders = gfx_arena->alloc_simple<ShaderLookup>();
+    // NOTE(spencer): RenderableAssets must be the first thing in the arena,
+    // i.e. (RenderableAssets*)gfx_arena->mem_begin should be a valid conversion
+    RenderableAssets* assets = gfx_arena->alloc_simple<RenderableAssets>();
     assets->ready_textures = gfx_arena->alloc_simple<TextureLookup>();
     for (i32 i = 0; i < 64; i++) {
         assets->ready_textures->map[i].resource_id = RESOURCE_ID_NONE;
         assets->ready_textures->map[i].texture_idx = RESOURCE_ID_NONE;
     }
-    //assets->renderable_world_maps = gfx_arena->alloc_array<WorldChunkDrawData>(2);
 
     ImageResource bg_image = load_image_resource("resource/image/Clouds/Clouds 7/1.png");
     render_state.bg_image_id = bg_image.resource_id;
@@ -929,197 +785,6 @@ void render_background()
     glBindVertexArray(0);
 }
 
-#if 0
-void render_background_layer(Viewport& viewport, WorldChunk* world_chunk)
-{
-    RenderableAssets* assets = reinterpret_cast<RenderableAssets*>(render_state.gfx_arena->mem_begin);
-    WorldChunkDrawData* draw_data = assets->renderable_world_maps + world_chunk->level_index;
-    assert(draw_data->renderable && "Tried to render an unready background tile map");
-
-    glUseProgram(game_shaders[TILEMAP_DRAW_SHADER].id);
-    glUniform1f(glGetUniformLocation(game_shaders[TILEMAP_DRAW_SHADER].id, "dimmer"), 0.9f);
-    draw_data->bg_renderer.render(viewport, game_shaders[TILEMAP_DRAW_SHADER]);
-}
-
-void render_foreground_layer(Viewport& viewport, WorldChunk* world_chunk)
-{
-    RenderableAssets* assets = reinterpret_cast<RenderableAssets*>(render_state.gfx_arena->mem_begin);
-    WorldChunkDrawData* draw_data = assets->renderable_world_maps + world_chunk->level_index;
-    assert(draw_data->renderable && "Tried to render an unready foreground tile map");
-
-    glUseProgram(game_shaders[TILEMAP_DRAW_SHADER].id);
-    glUniform1f(glGetUniformLocation(game_shaders[TILEMAP_DRAW_SHADER].id, "dimmer"), 1.0f);
-    draw_data->fg_renderer.render(viewport, game_shaders[TILEMAP_DRAW_SHADER]);
-}
-
-void render_decoration_layer(Viewport& viewport, WorldChunk* world_chunk)
-{
-    RenderableAssets* assets = reinterpret_cast<RenderableAssets*>(render_state.gfx_arena->mem_begin);
-    WorldChunkDrawData* draw_data = assets->renderable_world_maps + world_chunk->level_index;
-    assert(draw_data->renderable && "Tried to render an unready decoration tile map");
-
-    glUseProgram(game_shaders[TILEMAP_DRAW_SHADER].id);
-    glUniform1f(glGetUniformLocation(game_shaders[TILEMAP_DRAW_SHADER].id, "dimmer"), 1.0f);
-    draw_data->deco_renderer.render(viewport, game_shaders[TILEMAP_DRAW_SHADER]);
-}
-#endif
-
-#if 0
-void make_shadow_map_for_point_light(mem::Arena* scratch_arena, TileMap* tile_map, m::Vec3 light_pos, i32 light_index)
-{
-    usize n_tiles = tile_map->n_nonempty_tiles;
-    usize elems_per_quad = 4 * 3; // 4 verts, 3 components each
-    usize idx_elems_per_quad = 6;
-    f32* verts = scratch_arena->alloc_array<f32>(n_tiles * elems_per_quad * 4); // times 2 since we output max 2 quads per tile
-    u32* indices = scratch_arena->alloc_array<u32>(n_tiles * idx_elems_per_quad * 4);
-
-    usize quad_idx = 0;
-
-    m::Vec2 light_tilespace {light_pos.x, 180.0f - light_pos.y};
-
-    for (usize y = 0; y < WORLD_HEIGHT_TILES; y++)
-    {
-        for (usize x = 0; x < WORLD_WIDTH_TILES; x++)
-        {
-            m::Vec2 dir_to_light =
-                m::Vec2{(f32)(x * TILE_WIDTH_PIXELS), (f32)(y * TILE_WIDTH_PIXELS)} - light_tilespace;
-            usize i = tile_to_index(x, y);
-
-            if (tile_map->tiles[i] == TileType::EMPTY)
-            {
-                continue;
-            }
-
-            m::Vec2 tile_verts[] = {
-                {(f32)(x * TILE_WIDTH_PIXELS),                       (f32)(y * TILE_WIDTH_PIXELS)},
-                {(f32)((x * TILE_WIDTH_PIXELS) + TILE_WIDTH_PIXELS), (f32)(y * TILE_WIDTH_PIXELS)},
-                {(f32)((x * TILE_WIDTH_PIXELS) + TILE_WIDTH_PIXELS), (f32)((y * TILE_WIDTH_PIXELS) + TILE_WIDTH_PIXELS)},
-                {(f32)(x * TILE_WIDTH_PIXELS),                       (f32)((y * TILE_WIDTH_PIXELS) + TILE_WIDTH_PIXELS)}
-            };
-
-            for (usize edge_start = 0; edge_start < 4; edge_start++)
-            {
-                usize edge_end = edge_start + 1;
-                if (edge_end >= 4)
-                {
-                    edge_end = 0;
-                }
-
-                m::Vec2 edge = tile_verts[edge_end] - tile_verts[edge_start];
-                m::Vec2 norm {-edge.y, edge.x};
-                if (m::dot(norm, dir_to_light) <= 0)
-                {
-                    continue;
-                }
-
-                m::Vec2 end_from_light = tile_verts[edge_end] - light_tilespace;
-                m::Vec2 start_from_light = tile_verts[edge_start] - light_tilespace;
-
-                usize quad_start = quad_idx * elems_per_quad;
-                verts[quad_start] = tile_verts[edge_start].x;
-                verts[quad_start + 1] = tile_verts[edge_start].y;
-                verts[quad_start + 2] = 1.0;
-
-                verts[quad_start + 3] = tile_verts[edge_end].x;
-                verts[quad_start + 4] = tile_verts[edge_end].y;
-                verts[quad_start + 5] = 1.0;
-
-                verts[quad_start + 6] = end_from_light.x;
-                verts[quad_start + 7] = end_from_light.y;
-                verts[quad_start + 8] = 0.0;
-
-                verts[quad_start + 9] = start_from_light.x;
-                verts[quad_start + 10] = start_from_light.y;
-                verts[quad_start + 11] = 0.0;
-
-                usize idxs_start = quad_idx * idx_elems_per_quad;
-                usize quad_elems_start = quad_idx * 4;
-                indices[idxs_start] = quad_elems_start + 0;
-                indices[idxs_start + 1] = quad_elems_start + 1;
-                indices[idxs_start + 2] = quad_elems_start + 2;
-                indices[idxs_start + 3] = quad_elems_start + 2;
-                indices[idxs_start + 4] = quad_elems_start + 3;
-                indices[idxs_start + 5] = quad_elems_start + 0;
-
-                quad_idx += 1;
-            }
-        }
-    }
-
-    glBindVertexArray(0);
-
-    GLuint vbo;
-    glGenBuffers(1, &vbo);
-    GLuint ebo;
-    glGenBuffers(1, &ebo);
-
-    glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferData(GL_ARRAY_BUFFER, quad_idx * elems_per_quad * sizeof(f32), verts, GL_STATIC_DRAW);
-
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, quad_idx * idx_elems_per_quad * sizeof(u32), indices, GL_STATIC_DRAW);
-
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(0);
-
-    auto shader = game_shaders[TILE_OCCLUDER_SHADER];
-    glUseProgram(shader.id);
-
-    m::Mat4 world_transform =
-        m::translation_by({0.0f, (f32)(-WORLD_HEIGHT_TILES * TILE_WIDTH_PIXELS), 0.0f}) *
-        m::scale_by({1.0f, -1.0f, 0.0f});
-
-    glUniformMatrix4fv(glGetUniformLocation(shader.id, "world"), 1, GL_FALSE, reinterpret_cast<f32*>(&world_transform));
-
-    glUniform1i(glGetUniformLocation(shader.id, "light_idx"), light_index);
-
-    glDrawElements(GL_TRIANGLES, 6 * quad_idx, GL_UNSIGNED_INT, 0);
-}
-#endif
-
-void render_all_entities(Viewport& viewport, WorldChunk* world_chunk)
-{
-    auto screen = viewport.get_screen_transform();
-    for (EntityId eid = 0; eid < world_chunk->next_free_entity_idx; eid++) {
-        auto e = world_chunk->entities + eid;
-        Texture* e_sprite = get_renderable_texture(e->sprite_id);
-        ImageResource img_resource = get_image_resource(e->sprite_id);
-
-        f32 vertical_scale = img_resource.height / img_resource.n_frames;
-        // TODO: should have the concept of a sprite offset somewhere
-        m::Mat4 world =
-            m::scale_by({(f32)img_resource.width, vertical_scale, 0.0f}) *
-            m::translation_by({e->position.x - 6.0f, e->position.y, 0.0f});
-
-        auto shader = game_shaders[ENTITY_DRAW_SHADER];
-        glUseProgram(shader.id);
-        glUniformMatrix4fv(glGetUniformLocation(shader.id, "screen"),
-                        1,
-                        false,
-                        reinterpret_cast<f32*>(&screen));
-        glUniformMatrix4fv(glGetUniformLocation(shader.id, "world"),
-                        1,
-                        false,
-                        reinterpret_cast<f32*>(&world));
-        glUniform1i(glGetUniformLocation(shader.id, "anim_frame"), e->animation.current_frame);
-        glUniform1i(glGetUniformLocation(shader.id, "sprite"), 0);
-        // TODO: we need to update everything
-        if (e->facing_dir.last_observed_sign == 0) {
-            e->facing_dir.last_observed_sign = 1;
-        }
-        glUniform1i(glGetUniformLocation(shader.id, "facing_mult"), e->facing_dir.last_observed_sign);
-
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D_ARRAY, e_sprite->id);
-
-        // TODO: screen tho? I mean, ideally we'd batch
-        glBindVertexArray(render_state.screen.vao);
-        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-        glBindVertexArray(0);
-        glUseProgram(0);
-    }
-}
-
 void begin_render_to_target(RenderTarget target)
 {
     glBindFramebuffer(GL_FRAMEBUFFER, target.target_framebuf);
@@ -1202,16 +867,6 @@ void end_render()
 RenderTarget internal_target()
 {
     return render_state.internal_target;
-}
-
-void draw_rectangle(Rectangle rect, f32 r, f32 g, f32 b)
-{
-    // real dull way to just draw a rectangle
-    glEnable(GL_SCISSOR_TEST);
-    glScissor(rect.x, rect.y, rect.w, rect.h);
-    glClearColor(r, g, b, 1.0);
-    glClear(GL_COLOR_BUFFER_BIT);
-    glDisable(GL_SCISSOR_TEST);
 }
 
 // ------------------------------------
