@@ -326,6 +326,17 @@ buffer_rectangles(VertexBuffer* buffer, RectangleBufferVertex* rectangles, u32 n
 // I suppose this is the point of all of this work. We're decoupling
 // rendering from the game.
 
+struct BatchBuffer
+{
+    u32 rect_count;
+    u32 quad_count;
+    u32 items_in_buffer;
+
+    u32 buffer_size;
+    u32 buffer_used;
+    ubyte* buffer;
+};
+
 // next things I need here:
 // - arbitrary quad rendering
 // - how does the existing tilemap renderer fit?
@@ -388,6 +399,7 @@ struct UseShaderCmdItem
     Shader* shader;
 };
 
+
 struct AttachTextureCmdItem
 {
     RenderItemType type;
@@ -410,6 +422,7 @@ struct SpriteItem
     SpriteId sprite_id;
     m::Vec4 color_and_strength;
     m::Vec3 position;
+    // TODO(spencer): these should have better names
     m::Vec2 sprite_segment_min;
     m::Vec2 sprite_segment_max;
 };
@@ -424,18 +437,6 @@ struct QuadItem
     m::Vec4 v4;
     m::Vec4 color_and_strength;
 };
-
-struct BatchBuffer
-{
-    u32 rect_count;
-    u32 quad_count;
-    u32 items_in_buffer;
-
-    u32 buffer_size;
-    u32 buffer_used;
-    ubyte* buffer;
-};
-
 
 inline b32
 is_vertex_buffer_renderable(VertexBuffer* bufer)
@@ -541,6 +542,93 @@ push_render_item(BatchBuffer* buffer)
 
     return result;
 }
+
+inline RectangleItem*
+batch_push_rectangle(BatchBuffer* batch, m::Vec3 min, m::Vec3 max, m::Vec4 color_and_strength)
+{
+    auto item = push_render_item<RectangleItem>(batch);
+    item->min = min;
+    item->max = max;
+    item->color_and_strength = color_and_strength;
+    return item;
+}
+
+inline ClearBufferCmdItem*
+batch_push_clear_buffer_cmd(BatchBuffer* batch, m::Vec4 clear_color, b32 include_depth_buffer)
+{
+    auto item = push_render_item<ClearBufferCmdItem>(batch);
+    item->clear_color = clear_color;
+    item->clear_depth = include_depth_buffer;
+    return item;
+}
+
+inline SwitchTargetCmdItem*
+batch_push_switch_target_cmd(BatchBuffer* batch, RenderTarget* target)
+{
+    auto item = push_render_item<SwitchTargetCmdItem>(batch);
+    item->target = target;
+    return item;
+}
+
+inline UseShaderCmdItem*
+batch_push_use_shader_cmd(BatchBuffer* batch, Shader* shader)
+{
+    auto item = push_render_item<UseShaderCmdItem>(batch);
+    item->shader = shader;
+    return item;
+}
+
+inline AttachTextureCmdItem*
+batch_push_attach_texture_cmd(BatchBuffer* batch, u32 slot, Texture* texture)
+{
+    auto item = push_render_item<AttachTextureCmdItem>(batch);
+    item->slot = slot;
+    item->texture = texture;
+    return item;
+}
+
+inline DrawVertexBufferCmdItem*
+batch_push_draw_vertex_buffer_cmd(BatchBuffer* batch, VertexBuffer* buffer)
+{
+    auto item = push_render_item<DrawVertexBufferCmdItem>(batch);
+    item->buffer = buffer;
+    return item;
+}
+
+inline SpriteItem*
+batch_push_sprite(BatchBuffer* batch, 
+                       SpriteId sprite_id, 
+                       m::Vec4 color_and_strength, 
+                       m::Vec3 position,
+                       m::Vec2 sprite_segment_min,
+                       m::Vec2 sprite_segment_max)
+{
+    auto item = push_render_item<SpriteItem>(batch);
+    item->sprite_id = sprite_id;
+    item->color_and_strength = color_and_strength;
+    item->position = position;
+    item->sprite_segment_min = sprite_segment_min;
+    item->sprite_segment_max = sprite_segment_max;
+    return item;
+}
+
+inline QuadItem*
+batch_push_quad(BatchBuffer* batch,
+                m::Vec4 v1,
+                m::Vec4 v2,
+                m::Vec4 v3,
+                m::Vec4 v4,
+                m::Vec4 color_and_strength)
+{
+    auto item = push_render_item<QuadItem>(batch);
+    item->v1 = v1;
+    item->v2 = v2;
+    item->v3 = v3;
+    item->v4 = v4;
+    item->color_and_strength = color_and_strength;
+    return item;
+}
+
 
 } // namespace render
 
