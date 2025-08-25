@@ -102,6 +102,7 @@ struct Texture
 {
     GLuint id;
     SpriteResourceId ready_idx;
+    m::Vec3 dims;
 };
 Texture make_texture(TextureConfig config);
 Texture make_array_texture_from_vstrip(ImageResource image, usize n_images);
@@ -278,6 +279,9 @@ default_atlas_push_sprite(u32 width, u32 height, ubyte* data);
 void
 default_atlas_rebuffer(mem::Arena* tmp_arena);
 
+Texture*
+get_default_sprite_atlas_texture();
+
 // TODO(spencer): this name is bad since this type represents both
 // a "vertex" and a rectangle
 struct RectangleBufferVertex
@@ -335,7 +339,7 @@ buffer_rectangles(VertexBuffer* buffer, RectangleBufferVertex* rectangles, u32 n
     X(ClearBufferCmd) \
     X(SwitchTargetCmd) \
     X(UseShaderCmd) \
-    X(UseTextureCmd) \
+    X(AttachTextureCmd) \
     X(DrawVertexBufferCmd) \
     X(Sprite)
 
@@ -384,11 +388,12 @@ struct UseShaderCmdItem
     Shader* shader;
 };
 
-struct UseTextureCmdItem
+struct AttachTextureCmdItem
 {
     RenderItemType type;
 
-    ResourceId resource_id;
+    u32 slot;
+    Texture* texture;
 };
 
 struct DrawVertexBufferCmdItem
@@ -418,7 +423,6 @@ struct QuadItem
     m::Vec4 v3;
     m::Vec4 v4;
     m::Vec4 color_and_strength;
-    Texture texture;
 };
 
 struct BatchBuffer

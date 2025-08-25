@@ -125,6 +125,12 @@ struct Vec4
     }
 };
 
+inline Vec4
+extend(Vec3 xyz, f32 w)
+{
+    return Vec4 { xyz.x, xyz.y, xyz.z, w };
+}
+
 inline std::ostream&
 operator<<(std::ostream& os, Vec2& v)
 {

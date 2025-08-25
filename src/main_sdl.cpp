@@ -61,7 +61,7 @@ initialize_game_memory()
     // TODO: this should be much bigger, ya?
     memory.frame_temp_arena = memory.ephemeral_arena.alloc_sub_arena(5 * ONE_MB);
     memory.resource_arena = memory.ephemeral_arena.alloc_sub_arena(12 * ONE_MB);
-    memory.gfx_arena = memory.ephemeral_arena.alloc_sub_arena(2 * ONE_KB);
+    memory.gfx_arena = memory.ephemeral_arena.alloc_sub_arena(3 * ONE_KB);
     memory.debug_arena = memory.ephemeral_arena.alloc_sub_arena(1 * ONE_MB);
 
     std::cout << "memory map:" << std::endl;
@@ -157,7 +157,10 @@ int main()
         auto rect_shader = render::game_shaders + render::SIMPLE_SPRITE_SHADER;
         auto shader_item = render::push_render_item<render::UseShaderCmdItem>(entity_batch_buffer);
         shader_item->shader = rect_shader;
-        shader_set_uniform_1i(rect_shader, "sprite_atlas", 1);
+        auto atlas_bind = render::push_render_item<render::AttachTextureCmdItem>(entity_batch_buffer);
+        atlas_bind->slot = 0;
+        atlas_bind->texture = render::get_default_sprite_atlas_texture();
+
 
         while (SDL_PollEvent(&event)) {
             // quick and dirty for now
@@ -333,44 +336,59 @@ int main()
 
             render::begin_render(viewport, game_state, w, h);
 
-            //render::lighting_pass(&memory.frame_temp_arena, world_chunk->active_map);
-
             render::begin_render_to_internal_target();
 
             render::render_background();
-
-#if 0
-            render::render_background_layer(viewport, world_chunk);
-
-            render::render_foreground_layer(viewport, world_chunk);
-            render::render_decoration_layer(viewport, world_chunk);
-#endif
-            //auto player = world_chunk->entities + world_chunk->player_id;
-
-            //auto shader_item = render::push_render_item<render::UseShaderCmdItem>(entity_batch_buffer);
-            //shader_item->shader = &render::game_shaders[render::SIMPLE_RECTANGLE_SHADER];
-            //auto vert_buf_item = render::push_render_item<render::DrawVertexBufferCmdItem>(entity_batch_buffer);
-            //vert_buf_item->buffer = &vertbuf;
             
             auto world_chunk = game_state->active_world_chunk;
             auto shader_switch = render::push_render_item<render::UseShaderCmdItem>(entity_batch_buffer);
             shader_switch->shader = &render::game_shaders[render::SIMPLE_SPRITE_SHADER];
 
-            auto tex_switch = render::push_render_item<render::UseTextureCmdItem>(entity_batch_buffer);
-            tex_switch->resource_id = world_chunk->active_map->tile_sheet;
+            auto tex_switch = render::push_render_item<render::AttachTextureCmdItem>(entity_batch_buffer);
+            auto tilesheet_tex = render::get_renderable_texture(world_chunk->active_map->tile_sheet);
+            tex_switch->texture = tilesheet_tex;
+            tex_switch->slot = 0;
 
             auto render_buffer = render::push_render_item<render::DrawVertexBufferCmdItem>(entity_batch_buffer);
             render_buffer->buffer = &world_chunk->active_map->vert_buffer;
 
-            auto tex_undo = render::push_render_item<render::UseTextureCmdItem>(entity_batch_buffer);
-            tex_undo->resource_id = RESOURCE_ID_NONE;
+            auto tex_undo = render::push_render_item<render::AttachTextureCmdItem>(entity_batch_buffer);
+            tex_undo->texture = nullptr;
+            tex_undo->slot = 0;
 
             render::submit_batch(entity_batch_buffer, &memory.frame_temp_arena);
 
-            //render::test_shadow_map(&memory.frame_temp_arena, world_chunk->active_map, player->position + m::Vec3{4, 8}, 0);
             render::end_render_to_target();
 
             render::end_render();
+
+#define DBG_DUMP_SPRITESHEET 0
+#if DBG_DUMP_SPRITESHEET
+            auto spritesheet_min = m::Vec3 { (1920 - 512) / 2, (1080 - 512) / 2, 0 };
+            auto spritesheet_dims = m::Vec3 { 512, 512, 0 };
+
+            auto test_spritesheet_batch = render::make_batch_buffer(&memory.frame_temp_arena, 256);
+
+            auto clear_bg_shader = render::push_render_item<render::UseShaderCmdItem>(test_spritesheet_batch);
+            clear_bg_shader->shader = &render::game_shaders[render::SIMPLE_RECTANGLE_SHADER];
+
+            auto clear_bg = render::push_render_item<render::RectangleItem>(test_spritesheet_batch);
+            clear_bg->min = spritesheet_min;
+            clear_bg->max = spritesheet_min + spritesheet_dims;
+            clear_bg->color_and_strength = m::Vec4 { 0, 0, 0, 1 };
+
+            auto dbg_shader_switch = render::push_render_item<render::UseShaderCmdItem>(test_spritesheet_batch);
+            dbg_shader_switch->shader = &render::game_shaders[render::SIMPLE_QUAD_SHADER];
+
+            auto quad = render::push_render_item<render::QuadItem>(test_spritesheet_batch);
+            quad->v1 = m::extend(spritesheet_min, 1);
+            quad->v2 = m::extend(spritesheet_min + m::Vec3 {spritesheet_dims.x, 0, 0}, 1);
+            quad->v3 = m::extend(spritesheet_min + spritesheet_dims, 1);
+            quad->v4 = m::extend(spritesheet_min + m::Vec3 {0, spritesheet_dims.y, 0 }, 1);
+            quad->color_and_strength = m::Vec4 { 0, 0, 0, 0 };
+
+            render::submit_batch(test_spritesheet_batch, &memory.frame_temp_arena);
+#endif
 
             SDL_GL_SwapWindow(window);
 

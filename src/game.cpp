@@ -132,7 +132,6 @@ load_entity_prototypes(mem::GameMem& memory, const char* filepath)
         entity_proto->animation_id = anim->id;
         entity_proto->collider_dims = entity_collider;
         entity_proto->new_sprite_id = render::default_atlas_push_sprite(resource.width, resource.height, resource.data);
-
     }
 }
 
