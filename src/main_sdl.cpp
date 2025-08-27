@@ -152,6 +152,9 @@ int main()
 
     render::buffer_rectangles(&vertbuf, &rect, 1, &memory.frame_temp_arena);
 
+    render::RenderTarget internal_target = render::make_render_to_texture_target(320, 180);
+    //render::RenderTarget shadow_target = render::make_render_to_array_texture_target(320, 180, 24, GL_RGBA);
+
     while (running) {
         render::BatchBuffer* entity_batch_buffer = render::make_batch_buffer(&memory.frame_temp_arena, 256);
         auto rect_shader = render::game_shaders + render::SIMPLE_SPRITE_SHADER;
@@ -159,7 +162,6 @@ int main()
         render::batch_push_use_shader_cmd(entity_batch_buffer, rect_shader);
 
         render::batch_push_attach_texture_cmd(entity_batch_buffer, 0, render::get_default_sprite_atlas_texture());
-
 
         while (SDL_PollEvent(&event)) {
             // quick and dirty for now
@@ -333,12 +335,31 @@ int main()
             SDL_GetCurrentTime(&last_update_time);
 
 
-            render::begin_render(viewport, game_state, w, h);
+            // Prepare blank scene
+            render::begin_render(viewport, w, h);
 
-            render::begin_render_to_internal_target();
+            render::BatchBuffer* render_buffer = render::make_batch_buffer(&memory.frame_temp_arena, 1024);
 
-            render::render_background();
+            render::batch_push_clear_buffer_cmd(render_buffer, m::Vec4 { 1, 0, 1, 1 }, true);
 
+            render::batch_push_switch_target_cmd(render_buffer, &internal_target);
+
+            render::batch_push_clear_buffer_cmd(render_buffer, m::Vec4 { 0, 1, 1, 1 }, true);
+
+            // TODO: need to get the background image from somewhere
+            //
+            // for now I will just render a blank quad
+            render::batch_push_use_shader_cmd(render_buffer, &render::game_shaders[render::SIMPLE_RECTANGLE_SHADER]);
+            render::batch_push_rectangle(render_buffer,
+                                    m::Vec3 { 0, 0, 0 },
+                                    m::Vec3 { 320, 180, 0 },
+                                    m::Vec4 { 0.18, 0.18, 0.18, 1 });
+
+            // submit prepare
+            render::submit_batch(render_buffer, &memory.frame_temp_arena);
+            render::batch_buffer_reset(render_buffer);
+
+            // add the level details to the entity batch
             auto simple_sprite_shader = &render::game_shaders[render::SIMPLE_SPRITE_SHADER];
             render::batch_push_use_shader_cmd(entity_batch_buffer, simple_sprite_shader);
 
@@ -349,9 +370,20 @@ int main()
             auto map_foreground_buffer = &world_chunk->active_map->vert_buffer;
             render::batch_push_draw_vertex_buffer_cmd(entity_batch_buffer, map_foreground_buffer);
 
+            // render all the stuff to the internal target
             render::submit_batch(entity_batch_buffer, &memory.frame_temp_arena);
 
-            render::end_render_to_target();
+            render::batch_push_switch_target_cmd(render_buffer, render::get_default_render_target());
+            render::batch_push_use_shader_cmd(render_buffer, &render::game_shaders[render::SIMPLE_QUAD_SHADER]);
+            render::batch_push_attach_texture_cmd(render_buffer, 0, &internal_target.target_texture);
+            render::batch_push_quad(render_buffer,
+                                    m::Vec4 { 0, 0, 0, 1 },
+                                    m::Vec4 { 1920, 0, 0, 1 },
+                                    m::Vec4 { 1920, 1080, 0, 1 },
+                                    m::Vec4 { 0, 1080, 0, 1 },
+                                    m::Vec4 { 0, 0, 0, 0 });
+
+            render::submit_batch(render_buffer, &memory.frame_temp_arena);
 
             render::end_render();
 

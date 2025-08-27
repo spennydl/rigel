@@ -37,14 +37,14 @@ struct RenderState
     SpriteAtlas sprite_atlas;
     Shader* active_shader;
 
+    GLuint global_ubo;
+    GlobalUniforms global_uniforms;
+    u32 last_used_point_light_idx;
+    b32 point_lights_need_update;
+
     Rectangle current_viewport;
     // TODO: just a test
     u32 bg_image_id;
-
-    // TODO: should this be here?
-    GLuint global_ubo;
-    GlobalUniforms global_uniforms;
-
 };
 
 static RenderState render_state;
@@ -663,7 +663,12 @@ m::Vec4 linear_to_srgb(m::Vec4 rgba)
     return m::Vec4{powf(rgba.r, 2.2), powf(rgba.g, 2.2), powf(rgba.b, 2.2), rgba.a};
 }
 
-void begin_render(Viewport& viewport, GameState* game_state, f32 fb_width, f32 fb_height)
+RenderTarget* get_default_render_target()
+{
+    return &render_state.screen_target;
+}
+
+void begin_render(Viewport& viewport, f32 fb_width, f32 fb_height)
 {
     render_state.screen_target.w = fb_width;
     render_state.screen_target.h = fb_height;
@@ -677,37 +682,17 @@ void begin_render(Viewport& viewport, GameState* game_state, f32 fb_width, f32 f
 
     glViewport(0, 0, render_state.screen_target.w, render_state.screen_target.h);
     // NOTE: retrieved from tilesheet
-    m::Vec4 clear_color = linear_to_srgb(m::Vec4{0.0941, 0.0784, 0.10196, 1});
-    //m::Vec4 clear_color = linear_to_srgb(m::Vec4{0.3019, 0.6178, 0.902, 1});
-    glClearColor(clear_color.r, clear_color.g, clear_color.b, clear_color.a);
-    glClear(GL_COLOR_BUFFER_BIT);
 
-    auto active_chunk = game_state->active_world_chunk;
-    // TODO: obs should have lights be their own thing somewhere
-    auto player = active_chunk->entities;
-    auto player_collider = player->colliders->aabbs[0];
-    m::Vec3 player_center = player->position + player_collider.extents;
+    render_state.last_used_point_light_idx = 0;
+    render_state.point_lights_need_update = false;
 
     render_state.global_uniforms.screen_transform = viewport.get_screen_transform();
-    i32 l;
-    for (l = 0; l < active_chunk->next_free_light_idx; l++)
-    {
-        auto light = active_chunk->lights + l;
-        auto uniform = render_state.global_uniforms.point_lights + l;
-        // heck!
-        float light_z = 5.0f;
-        uniform->position = m::Vec4{light->position.x, light->position.y, light_z, 1};
-        uniform->color = m::Vec4{light->color.x, light->color.y, light->color.z, 1};
-    }
-    UniformLight player_point_light;
-    player_point_light.position = m::Vec4 {player_center.x, player_center.y, 10.0f, 1.0f};
-    player_point_light.color = m::Vec4 {2.0f, 2.0f, 1.0f, 1.0f}; // fourth component could be strength?
-    render_state.global_uniforms.point_lights[l] = player_point_light;
-    render_state.global_uniforms.n_lights.x = active_chunk->next_free_light_idx + 1;
 
+    /*
     glBindBuffer(GL_UNIFORM_BUFFER, render_state.global_ubo);
     glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(GlobalUniforms), &render_state.global_uniforms);
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
+    */
 }
 
 #if 0
@@ -823,41 +808,6 @@ void end_render_to_target()
 
 void end_render()
 {
-    // put the quad on the screen
-    f32 fb_width = render_state.internal_target.w;
-    f32 fb_height = render_state.internal_target.h;
-    GpuQuad screen = render_state.screen;
-    Shader screen_shader = game_shaders[SCREEN_SHADER];
-    f32 scale_factor = render_state.screen_target.w / render_state.internal_target.w;
-
-    m::Mat4 world_transform =
-        m::translation_by(m::Vec3 {-0.5, -0.5, 0.0}) *
-        m::scale_by(m::Vec3 {fb_width, fb_height, 0.0f });
-
-    m::Mat4 screen_transform =
-        m::scale_by(
-        m::Vec3 {scale_factor * (2.0f / render_state.screen_target.w),
-                -scale_factor * (2.0f / render_state.screen_target.h), 0});
-
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, render_state.internal_target.target_texture.id);
-
-    glUseProgram(screen_shader.id);
-    glUniformMatrix4fv(glGetUniformLocation(screen_shader.id, "screen_transform"),
-                       1,
-                       false,
-                       reinterpret_cast<f32*>(&screen_transform));
-    glUniformMatrix4fv(glGetUniformLocation(screen_shader.id, "world_transform"),
-                       1,
-                       false,
-                       reinterpret_cast<f32*>(&world_transform));
-    glUniform1i(glGetUniformLocation(screen_shader.id, "game"),
-                       0);
-
-    glBindVertexArray(screen.vao);
-    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-    glBindTexture(GL_TEXTURE_2D, 0);
-    glBindVertexArray(0);
 
 #ifdef RIGEL_DEBUG
     render_debug_lines();
@@ -1370,6 +1320,9 @@ submit_batch(BatchBuffer* batch, mem::Arena* temp_arena)
                 auto target = switch_item->target;
                 glBindFramebuffer(GL_FRAMEBUFFER, target->target_framebuf);
                 glViewport(0, 0, target->w, target->h);
+
+                render_state.current_viewport.w = target->w;
+                render_state.current_viewport.h = target->h;
 
                 item = reinterpret_cast<Item*>(switch_item + 1);
             } break;

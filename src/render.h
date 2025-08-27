@@ -12,8 +12,6 @@
 
 namespace rigel {
 
-struct GameState;
-
 namespace render {
 
 const f32 RENDER_INTERNAL_WIDTH = 320.0;
@@ -169,6 +167,7 @@ struct GlobalUniforms
 {
     m::Mat4 screen_transform;
     UniformLight point_lights[24];
+    // TODO: we are not using this, need to remove
     UniformLight circle_lights[24];
     m::Vec4 n_lights;
 };
@@ -192,7 +191,7 @@ extern Shader game_shaders[N_GAME_SHADERS];
 
 void initialize_renderer(mem::Arena* gfx_arena, f32 fb_width, f32 fb_height);
 
-void begin_render(Viewport& vp, GameState* game_state, f32 fb_width, f32 fb_height);
+void begin_render(Viewport& vp, f32 fb_width, f32 fb_height);
 void render_background();
 
 void begin_render_to_internal_target();
@@ -301,6 +300,15 @@ struct BatchBuffer
     u32 buffer_used;
     ubyte* buffer;
 };
+
+inline void
+batch_buffer_reset(BatchBuffer* batch_buffer)
+{
+    batch_buffer->rect_count = 0;
+    batch_buffer->quad_count = 0;
+    batch_buffer->items_in_buffer = 0;
+    batch_buffer->buffer_used = 0;
+}
 
 // next things I need here:
 // - arbitrary quad rendering
