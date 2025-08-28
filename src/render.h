@@ -19,14 +19,7 @@ const f32 RENDER_INTERNAL_HEIGHT = 180.0;
 const f32 RENDER_SCREEN_WIDTH = 1280.0;
 const f32 RENDER_SCREEN_HEIGHT = 720.0;
 
-const f32 QUAD_VERTS[] = { 0.0, 0.0, 0.0, 0.0, 1.0,
-                           0.0, 1.0, 0.0, 0.0, 0.0,
-                           1.0, 0.0, 0.0, 1.0, 1.0,
-                           1.0, 1.0, 0.0, 1.0, 0.0 };
-
-const u32 QUAD_IDXS[] = { 0, 1, 2, 1, 2, 3 };
-
-
+// TODO(spencer): this needs a rethink
 class Viewport
 {
   public:
@@ -72,8 +65,6 @@ shader_set_uniform_1i(Shader* shader, const char* name, i32 value);
 bool
 check_shader_status(GLuint id, bool prog = false);
 
-void draw_rectangle(Rectangle rect, f32 r, f32 g, f32 b);
-
 struct TextureConfig
 {
     u32 width;
@@ -105,12 +96,6 @@ struct Texture
 Texture make_texture(TextureConfig config);
 Texture make_array_texture_from_vstrip(ImageResource image, usize n_images);
 
-// ??
-constexpr static usize MAX_SPRITES_ON_SCREEN = 256;
-constexpr static usize MAX_ATLAS_SPRITES = 256;
-
-constexpr static usize SPRITE_BYTES_PER_PIXEL = 4;
-
 struct ResourceTextureMapping
 {
     ResourceId resource_id;
@@ -134,14 +119,6 @@ struct RenderableAssets
 
 Texture* get_renderable_texture(ResourceId sprite_id);
 
-// TODO(spencer): chopping block
-struct GpuQuad
-{
-    GLuint vao;
-
-    void initialize();
-};
-
 struct RenderTarget
 {
     i32 w;
@@ -150,19 +127,16 @@ struct RenderTarget
     GLuint target_framebuf;
     Texture target_texture;
 };
-
 RenderTarget* get_default_render_target();
 RenderTarget make_render_to_texture_target(i32 w, i32 h);
 RenderTarget make_render_to_array_texture_target(i32 w, i32 h, i32 layers, usize format);
 
-// TODO
 struct UniformLight
 {
     m::Vec4 position;
     m::Vec4 color;
     m::Vec4 data;
 };
-
 struct GlobalUniforms
 {
     m::Mat4 screen_transform;
@@ -186,17 +160,11 @@ enum GameShaders {
 #endif
     N_GAME_SHADERS
 };
-
 extern Shader game_shaders[N_GAME_SHADERS];
 
 void initialize_renderer(mem::Arena* gfx_arena, f32 fb_width, f32 fb_height);
 
 void begin_render(Viewport& vp, f32 fb_width, f32 fb_height);
-void render_background();
-
-void begin_render_to_internal_target();
-void begin_render_to_target(RenderTarget target);
-void end_render_to_target();
 
 void end_render();
 
@@ -205,12 +173,6 @@ RenderTarget internal_target();
 // ------------------------------------
 
 #define MAX_SPRITES 128
-
-struct ImageData
-{
-    m::Vec2 dimensions;
-    ubyte* data;
-};
 
 typedef i32 SpriteId;
 
@@ -598,6 +560,5 @@ batch_push_quad(BatchBuffer* batch,
 } // namespace render
 
 } // namespace rigel
-
 
 #endif // RIGEL_RENDER_H

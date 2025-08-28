@@ -353,7 +353,7 @@ int main()
             render::batch_push_rectangle(render_buffer,
                                     m::Vec3 { 0, 0, 0 },
                                     m::Vec3 { 320, 180, 0 },
-                                    m::Vec4 { 0.18, 0.18, 0.18, 1 });
+                                    m::Vec4 { 0.018, 0.018, 0.018, 1 });
 
             // submit prepare
             render::submit_batch(render_buffer, &memory.frame_temp_arena);
@@ -374,7 +374,11 @@ int main()
             render::submit_batch(entity_batch_buffer, &memory.frame_temp_arena);
 
             render::batch_push_switch_target_cmd(render_buffer, render::get_default_render_target());
-            render::batch_push_use_shader_cmd(render_buffer, &render::game_shaders[render::SIMPLE_QUAD_SHADER]);
+
+            auto screen_shader = &render::game_shaders[render::SCREEN_SHADER];
+            render::shader_set_uniform_m4v(screen_shader, "world_transform", m::mat4_I());
+
+            render::batch_push_use_shader_cmd(render_buffer, screen_shader);
             render::batch_push_attach_texture_cmd(render_buffer, 0, &internal_target.target_texture);
             render::batch_push_quad(render_buffer,
                                     m::Vec4 { 0, 0, 0, 1 },

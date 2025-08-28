@@ -26,12 +26,7 @@ struct RenderState
 {
     mem::Arena* gfx_arena;
 
-    RenderTarget internal_target;
     RenderTarget screen_target;
-    RenderTarget shadowmap_target;
-    GpuQuad screen;
-
-    // new renderer stuff
     VertexBuffer sprite_buffer;
     VertexBuffer quad_buffer;
     SpriteAtlas sprite_atlas;
@@ -43,12 +38,12 @@ struct RenderState
     b32 point_lights_need_update;
 
     Rectangle current_viewport;
-    // TODO: just a test
-    u32 bg_image_id;
 };
 
 static RenderState render_state;
 
+// TODO(spencer): we should move these into the main renderer.
+// The main renderer should also be able to draw lines.
 #ifdef RIGEL_DEBUG
 struct DebugRenderState
 {
@@ -393,14 +388,14 @@ void main() {
 
 const char* screen_vs_src = R"SRC(
 #version 400 core
-layout (location = 0) in vec3 vert;
+layout (location = 0) in vec4 vert;
 layout (location = 1) in vec2 uv;
 out vec2 tex_uv;
 uniform mat4 screen_transform;
 uniform mat4 world_transform;
 
 void main() {
-    gl_Position = screen_transform * world_transform * vec4(vert, 1.0);
+    gl_Position = screen_transform * world_transform * vert;
     tex_uv = uv;
 })SRC";
 
@@ -695,120 +690,8 @@ void begin_render(Viewport& viewport, f32 fb_width, f32 fb_height)
     */
 }
 
-#if 0
-void lighting_pass(mem::Arena* scratch_arena, TileMap* tile_map)
-{
-    // TODO
-    //
-    // I believe what I want is actually two different types of lights:
-    // - classic point lights
-    // - limited area lights that cast a relatively uniform value over a discrete
-    //   circle
-    usize n_lights = render_state.global_uniforms.n_lights.x;
-
-    // TODO: This should take an optional clear color
-    begin_render_to_target(render_state.shadowmap_target);
-    glClearColor(0, 0, 0, 0);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    for (usize light_idx = 0;
-         light_idx < n_lights;
-         light_idx++)
-    {
-        UniformLight* light = render_state.global_uniforms.point_lights + light_idx;
-        m::Vec4 point_light4 = light->position;
-        m::Vec3 point_light {point_light4.x, point_light4.y, point_light4.z};
-        make_shadow_map_for_point_light(scratch_arena, tile_map, point_light, light_idx);
-
-#ifdef RIGEL_DEBUG
-        Rectangle point_light_rect;
-        point_light_rect.x = light->position.x - 1;
-        point_light_rect.y = light->position.y - 1;
-        point_light_rect.w = 2;
-        point_light_rect.h = 2;
-        debug::push_rect_outline(point_light_rect, {light->color.r, light->color.g, light->color.b});
-#endif
-
-    }
-    end_render_to_target();
-
-}
-#endif
-
-void render_background()
-{
-    GpuQuad screen = render_state.screen;
-    Shader screen_shader = game_shaders[BACKGROUND_GRADIENT_SHADER];
-
-    auto bg_tex = get_renderable_texture(render_state.bg_image_id);
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, bg_tex->id);
-
-    m::Mat4 world_transform =
-        m::translation_by(m::Vec3 {-0.5, -0.5, 0.0}) *
-        m::scale_by(m::Vec3 {2.0f, 2.0f, 0.0f });
-
-    m::Mat4 screen_transform =
-        m::mat4_I();
-        //m::scale_by(
-        //m::Vec3 {scale_factor * (2.0f / render_state.internal_target.w),
-                //-scale_factor * (2.0f / render_state.internal_target.h), 0});
-
-    glUseProgram(screen_shader.id);
-    glUniformMatrix4fv(glGetUniformLocation(screen_shader.id, "screen_transform"),
-                       1,
-                       false,
-                       reinterpret_cast<f32*>(&screen_transform));
-    glUniformMatrix4fv(glGetUniformLocation(screen_shader.id, "world_transform"),
-                       1,
-                       false,
-                       reinterpret_cast<f32*>(&world_transform));
-    glUniform1i(glGetUniformLocation(screen_shader.id, "bg_tex"), 0);
-
-    glBindVertexArray(screen.vao);
-    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-    glBindTexture(GL_TEXTURE_2D, 0);
-    glBindVertexArray(0);
-}
-
-void begin_render_to_target(RenderTarget target)
-{
-    glBindFramebuffer(GL_FRAMEBUFFER, target.target_framebuf);
-
-    render_state.current_viewport.x = 0;
-    render_state.current_viewport.y = 0;
-    render_state.current_viewport.w = target.w;
-    render_state.current_viewport.h = target.h;
-
-    glViewport(0, 0, target.w, target.h);
-    m::Vec4 clear_color = linear_to_srgb(m::Vec4{0.0941, 0.0784, 0.10196, 1});
-    //m::Vec4 clear_color = linear_to_srgb(m::Vec4{0.3019, 0.6178, 0.802, 1});
-    glClearColor(clear_color.r, clear_color.g, clear_color.b, clear_color.a);
-    glClear(GL_COLOR_BUFFER_BIT);
-}
-
-void begin_render_to_internal_target()
-{
-    begin_render_to_target(render_state.internal_target);
-}
-
-void end_render_to_target()
-{
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-    render_state.current_viewport.x = 0;
-    render_state.current_viewport.y = 0;
-    render_state.current_viewport.w = render_state.screen_target.w;
-    render_state.current_viewport.h = render_state.screen_target.h;
-
-    glViewport(render_state.current_viewport.x,
-               render_state.current_viewport.y,
-               render_state.current_viewport.w,
-               render_state.current_viewport.h);
-}
-
 void end_render()
 {
-
 #ifdef RIGEL_DEBUG
     render_debug_lines();
 #endif
@@ -818,8 +701,6 @@ RenderTarget internal_target()
 {
     return render_state.internal_target;
 }
-
-// ------------------------------------
 
 SpriteId
 atlas_push_sprite(SpriteAtlas* atlas, u32 width, u32 height, ubyte* data)
