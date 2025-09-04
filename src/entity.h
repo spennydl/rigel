@@ -94,6 +94,7 @@ struct Entity
     EntityState state;
 
     m::Vec3 position;
+    m::Vec3 display_position;
     m::Vec3 velocity;
     m::Vec3 acceleration;
     m::Vec3 old_accel;

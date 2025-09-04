@@ -354,16 +354,32 @@ int main()
             render::submit_batch(render_buffer, &memory.frame_temp_arena);
             render::batch_buffer_reset(render_buffer);
 
-            // add the level details to the entity batch
+            // Render the background
             auto simple_sprite_shader = &render::game_shaders[render::SIMPLE_SPRITE_SHADER];
-            render::batch_push_use_shader_cmd(entity_batch_buffer, simple_sprite_shader);
+            render::batch_push_use_shader_cmd(render_buffer, simple_sprite_shader);
 
             auto world_chunk = game_state->active_world_chunk;
             auto tilesheet_tex = render::get_renderable_texture(world_chunk->active_map->tile_sheet);
+            render::batch_push_attach_texture_cmd(render_buffer, 0, tilesheet_tex);
+
+            auto map_background_buffer = &world_chunk->active_map->background->vert_buffer;
+            render::batch_push_draw_vertex_buffer_cmd(render_buffer, map_background_buffer);
+
+            render::submit_batch(render_buffer, &memory.frame_temp_arena);
+            render::batch_buffer_reset(render_buffer);
+            
+            // add the level details to the entity batch
+            //auto simple_sprite_shader = &render::game_shaders[render::SIMPLE_SPRITE_SHADER];
+            render::batch_push_use_shader_cmd(render_buffer, simple_sprite_shader);
+
+            //auto world_chunk = game_state->active_world_chunk;
+            //auto tilesheet_tex = render::get_renderable_texture(world_chunk->active_map->tile_sheet);
             render::batch_push_attach_texture_cmd(entity_batch_buffer, 0, tilesheet_tex);
 
             auto map_foreground_buffer = &world_chunk->active_map->vert_buffer;
+            auto map_decoration_buffer = &world_chunk->active_map->decoration->vert_buffer;
             render::batch_push_draw_vertex_buffer_cmd(entity_batch_buffer, map_foreground_buffer);
+            render::batch_push_draw_vertex_buffer_cmd(entity_batch_buffer, map_decoration_buffer);
 
             // render all the stuff to the internal target
             render::submit_batch(entity_batch_buffer, &memory.frame_temp_arena);
@@ -384,8 +400,6 @@ int main()
 
             render::submit_batch(render_buffer, &memory.frame_temp_arena);
 
-            render::end_render();
-
 #define DBG_DUMP_SPRITESHEET 0
 #if DBG_DUMP_SPRITESHEET
             auto spritesheet_min = m::Vec3 { (1920 - 512) / 2, (1080 - 512) / 2, 0 };
@@ -399,6 +413,8 @@ int main()
 
             render::batch_push_use_shader_cmd(test_spritesheet_batch, render::game_shaders + render::SIMPLE_QUAD_SHADER);
 
+            render::batch_push_attach_texture_cmd(test_spritesheet_batch, 0, render::get_default_sprite_atlas_texture());
+
             render::batch_push_quad(test_spritesheet_batch,
                                     m::extend(spritesheet_min, 1),
                                     m::extend(spritesheet_min + m::Vec3 {spritesheet_dims.x, 0, 0}, 1),
@@ -409,6 +425,7 @@ int main()
             render::submit_batch(test_spritesheet_batch, &memory.frame_temp_arena);
 #endif
 
+            render::end_render();
             SDL_GL_SwapWindow(window);
 
             memory.frame_temp_arena.reinit();

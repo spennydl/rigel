@@ -188,7 +188,10 @@ load_game(mem::GameMem& memory)
     // and we buffer them in/out as they come into range.
     // This could (and probably will) be as simple as loading all of the tilemaps in
     // a chapter when the chapter starts
-    tilemap_set_up_and_buffer(result->first_world_chunk->active_map, &memory.frame_temp_arena);
+    auto map = result->first_world_chunk->active_map;
+    tilemap_set_up_and_buffer(map, &memory.frame_temp_arena);
+    tilemap_set_up_and_buffer(map->background, &memory.frame_temp_arena);
+    tilemap_set_up_and_buffer(map->decoration, &memory.frame_temp_arena);
 
     return result;
 }
@@ -240,27 +243,29 @@ simulate_one_tick(mem::GameMem& memory, GameState* game_state, f32 dt, render::B
             {
                 m::Vec3 new_acc = {0};
 
-                f32 gravity = -600; // TODO: grav
+                f32 gravity = -1000; // TODO: grav
                 if (entity->state == STATE_ON_LAND)
                 {
                     gravity = 0;
                 }
                 new_acc.y += gravity;
 
+                const auto is_in_air = entity->state == STATE_FALLING || entity->state == STATE_JUMPING;
+                const auto player_speed = is_in_air ? 400 : 700;
                 if (g_input_state.move_left_requested)
                 {
-                    new_acc.x -= (entity->velocity.x > 0) ? 600 : 450;
+                    new_acc.x -= player_speed;
                 }
 
                 if (g_input_state.move_right_requested)
                 {
-                    new_acc.x += (entity->velocity.x < 0) ? 600 : 450;
+                    new_acc.x += player_speed;
                 }
 
                 bool is_requesting_move = g_input_state.move_left_requested || g_input_state.move_right_requested;
                 if (m::abs(entity->velocity.x) > 0 && !is_requesting_move)
                 {
-                    new_acc.x -= m::signof(entity->velocity.x) * 600;
+                    new_acc.x -= m::signof(entity->velocity.x) * player_speed;
 
                     if (m::abs(new_acc.x * dt) > m::abs(entity->velocity.x))
                     {
@@ -276,12 +281,12 @@ simulate_one_tick(mem::GameMem& memory, GameState* game_state, f32 dt, render::B
                         entity_set_animation(entity, "jump");
                     }
                     g_input_state.jump_requested = false;
-                    entity->velocity.y = 180;
+                    entity->velocity.y = 230;
                 }
 
                 entity->acceleration = new_acc;
 
-                auto move_result = move_entity(entity, active_map, dt, 100);
+                auto move_result = move_entity(entity, active_map, dt, 140);
 
                 if (entity->velocity.y <= 0)
                 {
@@ -325,7 +330,7 @@ simulate_one_tick(mem::GameMem& memory, GameState* game_state, f32 dt, render::B
                 auto frame = animation->frames + current_frame;
 
                 auto player_sprite = render::push_render_item<render::SpriteItem>(entity_batch_buffer);
-                player_sprite->position = m::floor(entity->position);
+                player_sprite->position = entity->display_position;
                 player_sprite->sprite_id = entity->new_sprite_id;
                 player_sprite->color_and_strength = {0, 0, 0, 0};
                 player_sprite->sprite_segment_min = frame->spritesheet_min;

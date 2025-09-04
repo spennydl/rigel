@@ -688,9 +688,14 @@ inline f32
 round(f32 val)
 {
     f32 fval = floor(val);
-    return fval;
     f32 dist_to_floor = val - fval;
     return (dist_to_floor >= 0.5) ? fval + signof(val) : fval;
+}
+
+inline Vec3
+round(Vec3 val)
+{
+    return Vec3 { round(val.x), round(val.y), round(val.z) };
 }
 
 inline u64

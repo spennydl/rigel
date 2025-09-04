@@ -692,7 +692,6 @@ atlas_push_sprite(SpriteAtlas* atlas, u32 width, u32 height, ubyte* data)
 void 
 atlas_rebuffer(SpriteAtlas* atlas, mem::Arena* temp_arena)
 {
-
     Sprite* sorted = temp_arena->alloc_array<Sprite>(atlas->next_free_sprite_id);
 
     auto swap_im = [](Sprite* l, Sprite* r)

@@ -230,12 +230,55 @@ move_entity(Entity* entity, TileMap* tile_map, f32 dt, f32 top_speed)
 
     if (sqdist_to_dest == 0 && !collides_with_level(entity_aabb, tile_map))
     {
-        entity->position = new_pos + dest_fract;
+        new_pos = new_pos + dest_fract;
     }
-    else
+
+#define MOVE_ALONG_DDA_LINE 0
+#if MOVE_ALONG_DDA_LINE
+    const auto new_displacement = new_pos - entity->position;
+
+    if ((m::abs(new_displacement.x) >= 1 || m::abs(new_displacement.y) >= 1) ||
+        (new_displacement.x == 0 && new_displacement.y == 0))
     {
-        entity->position = new_pos;
+        entity->display_position = new_pos;
+    } 
+    else 
+    {
+        // extrapolate out 1 full pixel along displacement slope
+        // to see if it makes sense to display moving into
+        // the target pixel
+        auto dx = new_displacement.x;
+        auto dy = new_displacement.y;
+        f32 step;
+        if (m::abs(dx) >= m::abs(dy))
+        {
+            step = m::abs(dx);
+        }
+        else
+        {
+            step = m::abs(dy);
+        }
+        dx = dx / step;
+        dy = dy / step;
+
+        const auto extrapolated = m::floor(entity->position + m::Vec3 {dx, dy, 0});
+        auto target = m::floor(new_pos);
+        target.z = 0;
+
+        if (extrapolated == target) {
+            entity->display_position = m::round(new_pos);
+        }
+        else
+        {
+            entity->display_position = m::floor(entity->position);
+        }
     }
+    // finally we can update the position.
+    entity->position = new_pos;
+#else
+    entity->position = new_pos;
+    entity->display_position = m::floor(new_pos);
+#endif
 
     if (sqdist_to_dest != 0)
     {
@@ -244,7 +287,6 @@ move_entity(Entity* entity, TileMap* tile_map, f32 dt, f32 top_speed)
         i32 y_idx = (to_dest.y > 0) ? 1 : 7;
 
         if (to_dest.x != 0 && collided[x_idx]) {
-            //std::cout << "collided x" << std::endl;
             new_vel.x = 0;
         }
         if (to_dest.y != 0 && collided[y_idx]) {
