@@ -12,6 +12,31 @@
 namespace rigel {
 namespace m {
 
+constexpr float eps = 0.000001;
+
+inline f32
+signof_zero(f32 val)
+{
+    return (val < 0) ? -1.0 : (val == 0) ? 0 : 1;
+}
+
+inline f32
+signof(f32 val)
+{
+    return (val < 0) ? -1.0f : 1.0f;
+}
+
+inline f32
+abs(f32 val)
+{
+    return val * signof(val);
+}
+
+inline bool
+floats_eq(f32 lhs, f32 rhs)
+{
+    return abs(lhs - rhs) < eps;
+}
 
 struct Vec2
 {
@@ -193,6 +218,18 @@ mat4_I()
 }
 
 inline Mat4
+mat4_from_rows(Vec4 row1, Vec4 row2, Vec4 row3, Vec4 row4)
+{
+    return Mat4
+    {{
+        {row1.x, row2.x, row3.x, row4.x},
+        {row1.y, row2.y, row3.y, row4.y},
+        {row1.z, row2.z, row3.z, row4.z},
+        {row1.w, row2.w, row3.w, row4.w},
+    }};
+}
+
+inline Mat4
 diag(f32 s)
 {
     return Mat4
@@ -216,64 +253,6 @@ transpose(const Mat4& m)
     }};
 }
 
-inline std::ostream&
-operator<<(std::ostream& os, Mat4& mat)
-{
-    for (int m = 0; m < 4; m++)
-    {
-        for (int n = 0; n < 4; n++)
-        {
-            os << mat[n][m] << " ";
-        }
-        os << std::endl;
-    }
-    return os;
-}
-
-inline Vec4
-operator*(const Mat4& left, const Vec4& right)
-{
-    Vec4 result {0, 0, 0, 0};
-    for (int n = 0; n < 4; n++)
-    {
-        for (int k = 0; k < 4; k++)
-        {
-            result.xyzw[n] += left.cols[n][k] * right[n];
-        }
-    }
-    return result;
-}
-
-inline Mat4
-operator*(const Mat4& left, const Mat4& right)
-{
-    Mat4 result = {0};
-    for (int n = 0; n < 4; n++)
-    {
-        for (int m = 0; m < 4; m++)
-        {
-            for (int k = 0; k < 4; k++)
-            {
-                result[m][n] += left[m][k] * right[k][n];
-            }
-        }
-    }
-    return result;
-}
-
-inline Mat4
-operator*(const Mat4& left, const f32& right)
-{
-    Mat4 result = left;
-    for (i32 n = 0; n < 4; n++)
-    {
-        for (i32 m = 0; m < 4; m++)
-        {
-            result[m][n] = left[m][n] * right;
-        }
-    }
-    return result;
-}
 
 inline Mat4
 translation_by(Vec3 by)
@@ -372,7 +351,8 @@ operator/(const Vec2& lhs, const f32& rhs)
 inline bool
 operator==(const Vec2& lhs, const Vec2& rhs)
 {
-    return lhs.x == rhs.x && lhs.y == rhs.y;
+    return floats_eq(lhs.x, rhs.x) && 
+           floats_eq(lhs.y, rhs.y);
 }
 
 //--------------------------------------------------------------------------------
@@ -440,7 +420,9 @@ operator/(const Vec3& lhs, const f32& rhs)
 inline bool
 operator==(const Vec3& lhs, const Vec3& rhs)
 {
-    return lhs.x == rhs.x && lhs.y == rhs.y && lhs.z == rhs.z;
+    return floats_eq(lhs.x, rhs.x) && 
+           floats_eq(lhs.y, rhs.y) && 
+           floats_eq(lhs.z, rhs.z);
 }
 
 //--------------------------------------------------------------------------------
@@ -505,6 +487,90 @@ operator/(const Vec4& lhs, const f32& rhs)
     return Vec4 { lhs.x / rhs, lhs.y / rhs, lhs.z / rhs, lhs.w / rhs};
 }
 
+inline bool
+operator==(const Vec4& lhs, const Vec4& rhs)
+{
+    return floats_eq(lhs.x, rhs.x) && 
+           floats_eq(lhs.y, rhs.y) && 
+           floats_eq(lhs.z, rhs.z) && 
+           floats_eq(lhs.w, rhs.w);
+}
+
+// Mat4 operators
+
+inline std::ostream&
+operator<<(std::ostream& os, Mat4& mat)
+{
+    for (int m = 0; m < 4; m++)
+    {
+        for (int n = 0; n < 4; n++)
+        {
+            os << mat[n][m] << " ";
+        }
+        os << std::endl;
+    }
+    return os;
+}
+
+inline Vec4
+operator*(const Mat4& left, const Vec4& right)
+{
+    Vec4 result {0, 0, 0, 0};
+    for (int n = 0; n < 4; n++)
+    {
+        for (int k = 0; k < 4; k++)
+        {
+            result.xyzw[n] += left.cols[n][k] * right[n];
+        }
+    }
+    return result;
+}
+
+inline Mat4
+operator*(const Mat4& left, const Mat4& right)
+{
+    Mat4 result = {0};
+
+    for (int m = 0; m < 4; m++)
+    {
+        for (int n = 0; n < 4; n++)
+        {
+            for (int k = 0; k < 4; k++)
+            {
+                result[n][m] += left[k][m] * right[n][k];
+            }
+        }
+    }
+    return result;
+}
+
+inline Mat4
+operator*(const Mat4& left, const f32& right)
+{
+    Mat4 result = left;
+    for (i32 n = 0; n < 4; n++)
+    {
+        for (i32 m = 0; m < 4; m++)
+        {
+            result[m][n] = left[m][n] * right;
+        }
+    }
+    return result;
+}
+
+inline bool
+operator==(const Mat4& lhs, const Mat4& rhs)
+{
+    for (i32 n = 0; n < 4; n++)
+    {
+        if (lhs.cols[n] != rhs.cols[n]) 
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 inline f32
 dot(const Vec2& lhs, const Vec2& rhs)
 {
@@ -559,24 +625,6 @@ length(Vec4 v)
     return sqrt(dot(v, v));
 }
 
-
-inline f32
-signof_zero(f32 val)
-{
-    return (val < 0) ? -1.0 : (val == 0) ? 0 : 1;
-}
-
-inline f32
-signof(f32 val)
-{
-    return (val < 0) ? -1.0f : 1.0f;
-}
-
-inline f32
-abs(f32 val)
-{
-    return val * signof(val);
-}
 
 inline Vec2
 abs(Vec2 val)
@@ -657,6 +705,128 @@ dbj2(const char* str, usize len)
 }
 
 }
+}
+
+#include "doctest.h"
+
+TEST_CASE("Check that mat4 operator== works")
+{
+    rigel::m::Mat4 first_mat {
+        {
+            {1, 2, 3, 4},
+            {5, 6, 7, 8},
+            {9, 10, 11, 12},
+            {13, 14, 15, 16}
+        }
+    };
+
+    rigel::m::Mat4 first_mat_eq {
+        {
+            {1, 2, 3, 4},
+            {5, 6, 7, 8},
+            {9, 10, 11, 12},
+            {13, 14, 15, 16}
+        }
+    };
+
+    rigel::m::Mat4 first_mat_neq {
+        {
+            {4, 3, 2, 1},
+            {8, 7, 6, 5},
+            {9, 10, 11, 12},
+            {13, 14, 15, 16}
+        }
+    };
+
+    CHECK(first_mat == first_mat_eq);
+    CHECK(first_mat != first_mat_neq);
+}
+
+TEST_CASE("check transpose")
+{
+    rigel::m::Mat4 first_mat {
+        {
+            {1, 2, 3, 4},
+            {5, 6, 7, 8},
+            {9, 10, 11, 12},
+            {13, 14, 15, 16}
+        }
+    };
+
+    rigel::m::Mat4 first_mat_prime {
+        {
+            {1, 5, 9, 13},
+            {2, 6, 10, 14},
+            {3, 7, 11, 15},
+            {4, 8, 12, 16}
+        }
+    };
+
+    auto transposed = rigel::m::transpose(first_mat);
+
+    CHECK(transposed == first_mat_prime);
+}
+
+TEST_CASE("From rows")
+{
+    rigel::m::Mat4 mat_expected {
+        {
+            {1, 5, 9, 13},
+            {2, 6, 10, 14},
+            {3, 7, 11, 15},
+            {4, 8, 12, 16}
+        }
+    };
+
+    auto result = rigel::m::mat4_from_rows({1, 2, 3, 4},
+                                           {5, 6, 7, 8},
+                                           {9, 10, 11, 12},
+                                           {13, 14, 15, 16});
+    CHECK(mat_expected == result);
+}
+
+#include <iomanip>
+#include <limits>
+
+TEST_CASE("Matrix multiplication")
+{
+    auto mat = rigel::m::mat4_from_rows({1, 2, 3, 4},
+                                        {5, 6, 7, 8},
+                                        {9, 10, 11, 12},
+                                        {13, 14, 15, 16});
+
+    auto first_expect = rigel::m::mat4_from_rows({90, 100, 110, 120},
+                                                 {202, 228, 254, 280},
+                                                 {314, 356, 398, 440},
+                                                 {426, 484, 542, 600});
+    auto first_result = mat * mat;
+
+    CHECK(first_expect == first_result);
+
+    auto m1 = rigel::m::mat4_from_rows(
+        {0.706720, 0.113048, 0.299599, 0.241653},
+        {0.523239, 0.684897, 0.067323, 0.777105},
+        {0.036267, 0.838142, 0.146078, 0.179876},
+        {0.350084, 0.331012, 0.669054, 0.226930}
+    );
+
+    auto m2 = rigel::m::mat4_from_rows(
+        {0.912837, 0.914084, 0.934268, 0.521541},
+        {0.134723, 0.905010, 0.012055, 0.405300},
+        {0.482055, 0.915694, 0.225757, 0.913330},
+        {0.050268, 0.448012, 0.964114, 0.400996}
+    );
+
+    auto rand_expected = rigel::m::mat4_from_rows(
+        {0.816921, 1.130916, 0.9622462, 0.7849364},
+        {0.6414202, 1.507923, 1.261518, 0.9235834},
+        {0.2254825, 1.006027, 0.250386, 0.5641606},
+        {0.6980928, 1.333892, 0.7008927, 1.018807}
+    );
+
+    auto result = m1 * m2;
+
+    CHECK(result == rand_expected);
 }
 
 

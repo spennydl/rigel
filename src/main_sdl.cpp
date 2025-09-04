@@ -9,18 +9,13 @@
 #include "debug.h"
 #include "input.h"
 
+#include <glad/glad.h>
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_opengl.h>
 #include <SDL3/SDL_time.h>
-#include <glad/glad.h>
 #include <iostream>
 #include <sys/mman.h>
 
-namespace rigel {
-
-InputState g_input_state;
-
-}
 
 using namespace rigel;
 

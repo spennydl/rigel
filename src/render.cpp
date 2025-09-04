@@ -6,7 +6,6 @@
 #include "game.h"
 #include "fs_linux.h"
 #include "mem.h"
-// TODO: snprintf is dumbo
 #include <stdio.h>
 #include <glad/glad.h>
 
@@ -129,6 +128,14 @@ shader_set_uniform_1i(Shader* shader, const char* name, i32 value)
     glUniform1i(glGetUniformLocation(shader->id, name), value);
 }
 
+TextureConfig::TextureConfig()
+    : width(0), height(0),
+        wrap_s(GL_REPEAT), wrap_t(GL_REPEAT),
+        min_filter(GL_NEAREST), mag_filter(GL_NEAREST),
+        internal_format(GL_SRGB_ALPHA), src_format(GL_RGBA),
+        src_data_type(GL_UNSIGNED_BYTE), data(nullptr)
+{}
+
 Texture make_texture(TextureConfig config)
 {
     Texture tex;
@@ -233,33 +240,6 @@ void
 Viewport::zoom(float factor)
 {
     this->scale = factor;
-}
-
-void GpuQuad::initialize()
-{
-    GLuint vbo;
-    glGenBuffers(1, &vbo);
-    GLuint ebo;
-    glGenBuffers(1, &ebo);
-
-    glGenVertexArrays(1, &this->vao);
-    glBindVertexArray(this->vao);
-
-    glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(QUAD_VERTS), QUAD_VERTS, GL_STATIC_DRAW);
-
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
-    glBufferData(
-      GL_ELEMENT_ARRAY_BUFFER, sizeof(QUAD_IDXS), QUAD_IDXS, GL_STATIC_DRAW);
-
-    glVertexAttribPointer(
-      0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(
-      1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
-    glEnableVertexAttribArray(1);
-
-    glBindVertexArray(0);
 }
 
 Texture* get_renderable_texture(ResourceId sprite_id)
@@ -594,10 +574,6 @@ void initialize_renderer(mem::Arena* gfx_arena, f32 fb_width, f32 fb_height)
 
     render_state.active_shader = nullptr;
 
-    render_state.internal_target = make_render_to_texture_target(320, 180);
-
-    render_state.shadowmap_target = make_render_to_array_texture_target(320, 180, 24, GL_RGBA);
-
     render_state.screen_target.w = fb_width;
     render_state.screen_target.h = fb_height;
     render_state.screen_target.target_framebuf = 0;
@@ -633,8 +609,6 @@ void initialize_renderer(mem::Arena* gfx_arena, f32 fb_width, f32 fb_height)
     Shader* simple_quad = &game_shaders[SIMPLE_QUAD_SHADER];
     shader_load_from_src(simple_quad, simple_quad_vs, simple_sprite_fs);
 
-    render_state.screen.initialize();
-
     // NOTE(spencer): RenderableAssets must be the first thing in the arena,
     // i.e. (RenderableAssets*)gfx_arena->mem_begin should be a valid conversion
     RenderableAssets* assets = gfx_arena->alloc_simple<RenderableAssets>();
@@ -644,8 +618,8 @@ void initialize_renderer(mem::Arena* gfx_arena, f32 fb_width, f32 fb_height)
         assets->ready_textures->map[i].texture_idx = RESOURCE_ID_NONE;
     }
 
-    ImageResource bg_image = load_image_resource("resource/image/Clouds/Clouds 7/1.png");
-    render_state.bg_image_id = bg_image.resource_id;
+    //ImageResource bg_image = load_image_resource("resource/image/Clouds/Clouds 7/1.png");
+    //render_state.bg_image_id = bg_image.resource_id;
 
 #ifdef RIGEL_DEBUG
     render_debug_init(gfx_arena);
@@ -695,11 +669,6 @@ void end_render()
 #ifdef RIGEL_DEBUG
     render_debug_lines();
 #endif
-}
-
-RenderTarget internal_target()
-{
-    return render_state.internal_target;
 }
 
 SpriteId
@@ -972,9 +941,9 @@ do_draw_elem_buffer(u32 n_elems, Texture** textures)
         shader_set_uniform_2fv(shader, tex_name, dims_2d);
     }
 
-    m::Mat4 screen_transform =
+    m::Mat4 screen_transform = 
         m::scale_by(m::Vec3 {(2.0f / render_state.current_viewport.w), (2.0f / render_state.current_viewport.h), 0.0f})
-        * m::translation_by(m::Vec3 { -1.0f, -1.0f });
+        * m::translation_by(m::Vec3 { -render_state.current_viewport.w / 2.0f, -render_state.current_viewport.h / 2.0f });
 
     shader_set_uniform_m4v(shader, "screen_transform", screen_transform);
 

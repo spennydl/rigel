@@ -7,6 +7,8 @@
 namespace rigel
 {
 
+InputState g_input_state;
+
 enum AxisAndDirection
 {
     AxisAndDirection_LeftXPos = SDL_GAMEPAD_BUTTON_COUNT,

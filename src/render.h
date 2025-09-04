@@ -6,8 +6,6 @@
 #include "collider.h"
 #include "rigelmath.h"
 
-#include <glad/glad.h>
-
 #include <string>
 
 namespace rigel {
@@ -52,7 +50,7 @@ class Viewport
 
 struct Shader
 {
-    GLuint id;
+    u32 id;
 };
 void 
 shader_load_from_src(Shader* shader, const char* vs_src, const char* fs_src);
@@ -63,7 +61,7 @@ shader_set_uniform_2fv(Shader* shader, const char* name, m::Vec2 vec);
 void
 shader_set_uniform_1i(Shader* shader, const char* name, i32 value);
 bool
-check_shader_status(GLuint id, bool prog = false);
+check_shader_status(u32 id, bool prog = false);
 
 struct TextureConfig
 {
@@ -78,18 +76,12 @@ struct TextureConfig
     u32 src_data_type;
     void* data;
 
-    TextureConfig()
-        : width(0), height(0),
-            wrap_s(GL_REPEAT), wrap_t(GL_REPEAT),
-            min_filter(GL_NEAREST), mag_filter(GL_NEAREST),
-            internal_format(GL_SRGB_ALPHA), src_format(GL_RGBA),
-            src_data_type(GL_UNSIGNED_BYTE), data(nullptr)
-    {}
+    TextureConfig();
 };
 
 struct Texture
 {
-    GLuint id;
+    u32 id;
     SpriteResourceId ready_idx;
     m::Vec3 dims;
 };
@@ -124,7 +116,7 @@ struct RenderTarget
     i32 w;
     i32 h;
     i32 l;
-    GLuint target_framebuf;
+    u32 target_framebuf;
     Texture target_texture;
 };
 RenderTarget* get_default_render_target();
@@ -228,9 +220,9 @@ struct QuadBufferVertex
 
 struct VertexBuffer
 {
-    GLuint vao;
-    GLuint vbo;
-    GLuint ebo;
+    u32 vao;
+    u32 vbo;
+    u32 ebo;
 
     u32 n_elems;
 };
