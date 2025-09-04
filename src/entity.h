@@ -117,7 +117,7 @@ struct EntityMoveResult
 EntityMoveResult
 move_entity(Entity* entity, TileMap* tile_map, f32 dt, f32 top_speed = 120);
 bool
-collides_with_level(AABB aabb, TileMap* tile_map);
+collides_with_level(AABB aabb, TileMap* tile_map, m::Vec3 displacement);
 void
 entity_set_animation(Entity* entity, const char* anim_name);
 void

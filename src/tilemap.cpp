@@ -35,7 +35,8 @@ fill_tilemap_from_array(TileMap* map, f32* array, usize n_elems)
         }
         else
         {
-            map->tiles[tile_i] = TileType::WALL;
+            const auto id = array[tile_i] == VERTICAL_ONEWAY_ID ? TileType::VERTICAL_ONEWAY : TileType::WALL;
+            map->tiles[tile_i] = id;
             n_nonempty++;
         }
         map->tile_sprites[tile_i] = array[tile_i];

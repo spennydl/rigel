@@ -66,7 +66,7 @@ get_dda_step(m::Vec3 displacement)
 }
 
 bool
-collides_with_level(AABB aabb, TileMap* tile_map)
+collides_with_level(AABB aabb, TileMap* tile_map, m::Vec3 entity_start_position)
 {
     m::Vec3 tl {aabb.center.x - aabb.extents.x,
                 aabb.center.y + aabb.extents.y, 0.0f};
@@ -93,9 +93,16 @@ collides_with_level(AABB aabb, TileMap* tile_map)
             {
                 continue;
             }
+
             AABB tile_aabb;
             tile_aabb.extents = {4.0f, 4.0f, 0.0f};
             tile_aabb.center = tiles_to_world(tile_x, tile_y) + tile_aabb.extents;
+
+            const auto tile_top = tile_aabb.center.y + tile_aabb.extents.y;
+            if (tile_map->tiles[tile_index] == TileType::VERTICAL_ONEWAY && entity_start_position.y < tile_top)
+            {
+                continue;
+            }
 
             m::Vec3 result = simple_AABB_overlap(aabb, tile_aabb);
             if (result.x > 0 || result.y > 0) {
@@ -179,7 +186,7 @@ move_entity(Entity* entity, TileMap* tile_map, f32 dt, f32 top_speed)
                 f32 test_sqdist = m::dot(test_displacement, test_displacement);
 
                 i32 i = ((2 - (y + 1)) * 3) + (x + 1);
-                collided[i] = collides_with_level(entity_aabb, tile_map);
+                collided[i] = collides_with_level(entity_aabb, tile_map, entity->position);
 
                 bool contains_dest = test_center.x == dest_pixel.x && test_center.y == dest_pixel.y;
 
@@ -228,14 +235,14 @@ move_entity(Entity* entity, TileMap* tile_map, f32 dt, f32 top_speed)
 
     entity_aabb.center = new_pos + entity_aabb.extents + dest_fract;
 
-    if (sqdist_to_dest == 0 && !collides_with_level(entity_aabb, tile_map))
+    if (sqdist_to_dest == 0 && !collides_with_level(entity_aabb, tile_map, entity->position))
     {
         new_pos = new_pos + dest_fract;
     }
 
 #define MOVE_ALONG_DDA_LINE 0
 #if MOVE_ALONG_DDA_LINE
-    const auto new_displacement = new_pos - entity->position;
+    const auto new_displacement = entity_aabb.center - entity->position;
 
     if ((m::abs(new_displacement.x) >= 1 || m::abs(new_displacement.y) >= 1) ||
         (new_displacement.x == 0 && new_displacement.y == 0))

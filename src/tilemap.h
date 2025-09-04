@@ -14,9 +14,12 @@ namespace rigel {
 #define WORLD_HEIGHT_TILES 23
 #define WORLD_SIZE_TILES (WORLD_WIDTH_TILES * WORLD_HEIGHT_TILES)
 
+// for now...
+#define VERTICAL_ONEWAY_ID 8312
+
 enum class TileType
 {
-    EMPTY, WALL
+    EMPTY, WALL, VERTICAL_ONEWAY
 };
 
 struct TileMap
