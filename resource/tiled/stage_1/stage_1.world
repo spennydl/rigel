@@ -1,0 +1,118 @@
+{
+    "maps": [
+        {
+            "fileName": "start_room.tmj",
+            "height": 184,
+            "width": 320,
+            "x": 0,
+            "y": 0
+        },
+        {
+            "fileName": "junction.tmj",
+            "height": 184,
+            "width": 320,
+            "x": 320,
+            "y": 0
+        },
+        {
+            "fileName": "freal_junction.tmj",
+            "height": 184,
+            "width": 320,
+            "x": 640,
+            "y": 0
+        },
+        {
+            "fileName": "towards_spider.tmj",
+            "height": 184,
+            "width": 320,
+            "x": 640,
+            "y": -184
+        },
+        {
+            "fileName": "towards_stick.tmj",
+            "height": 184,
+            "width": 320,
+            "x": 640,
+            "y": 184
+        },
+        {
+            "fileName": "stick_spikes.tmj",
+            "height": 184,
+            "width": 320,
+            "x": 960,
+            "y": 184
+        },
+        {
+            "fileName": "ravine_upper.tmj",
+            "height": 184,
+            "width": 320,
+            "x": 1280,
+            "y": 184
+        },
+        {
+            "fileName": "ravine_lower.tmj",
+            "height": 184,
+            "width": 320,
+            "x": 1280,
+            "y": 368
+        },
+        {
+            "fileName": "stage_exit.tmj",
+            "height": 184,
+            "width": 320,
+            "x": 1600,
+            "y": 0
+        },
+        {
+            "fileName": "ravine_bridge.tmj",
+            "height": 184,
+            "width": 320,
+            "x": 1280,
+            "y": 0
+        },
+        {
+            "fileName": "bridge_approach.tmj",
+            "height": 184,
+            "width": 320,
+            "x": 960,
+            "y": 0
+        },
+        {
+            "fileName": "lil_mountain.tmj",
+            "height": 184,
+            "width": 320,
+            "x": 960,
+            "y": -184
+        },
+        {
+            "fileName": "spidercave.tmj",
+            "height": 184,
+            "width": 320,
+            "x": 960,
+            "y": -368
+        },
+        {
+            "fileName": "mountain_back.tmj",
+            "height": 184,
+            "width": 320,
+            "x": 1280,
+            "y": -184
+        },
+        {
+            "fileName": "mtnsky.tmj",
+            "height": 184,
+            "width": 320,
+            "x": 1280,
+            "y": -368
+        },
+        {
+            "fileName": "emptysky.tmj",
+            "height": 184,
+            "width": 320,
+            "x": 640,
+            "y": -368
+        }
+    ],
+    "onlyShowAdjacentMaps": false,
+    "type": "world"
+}

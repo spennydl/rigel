@@ -73,6 +73,8 @@ struct WorldChunk
 
     ZoneTriggerData zone_triggers[16];
 
+    m::Vec2 overworld_coords;
+
     // REVIEW
     EntityId add_entity(mem::GameMem& mem,
                         EntityType type,

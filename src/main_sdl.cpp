@@ -23,7 +23,7 @@ mem::GameMem
 initialize_game_memory()
 {
     mem::GameMem memory;
-    memory.game_state_storage_size = 8 * ONE_PAGE;
+    memory.game_state_storage_size = 64 * ONE_PAGE;
     auto gs_ptr = mmap(nullptr,
                        memory.game_state_storage_size,
                        PROT_READ | PROT_WRITE,

@@ -86,11 +86,6 @@ struct Entity
     ResourceId sprite_id;
     i32 new_sprite_id;
 
-    // sooo we have these state flags which means that an
-    // entity can be in more than one state at a time. I think
-    // this was initialially done because jumping and falling
-    // are technically co-incident. Buuuuut I am now thinking
-    // that this is silly.
     EntityState state;
 
     m::Vec3 position;

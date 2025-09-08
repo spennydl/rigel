@@ -26,33 +26,6 @@ TEST_TRIGGER_FN(ZoneTrigger)
 
 EFFECT_FN(ChangeLevel)
 {
-    Direction* dir = reinterpret_cast<Direction*>(data);
-    switch_world_chunk(*memory, game_state, target_id);
-    auto player = game_state->active_world_chunk->entities + game_state->active_world_chunk->player_id;
-    // TODO: there's gotta be something more robust I could do here
-    switch(*dir)
-    {
-        case Direction_Up:
-        {
-            player->position.y = player->position.y - (WORLD_HEIGHT_TILES * TILE_WIDTH_PIXELS);
-        } break;
-        case Direction_Right:
-        {
-            player->position.x = player->position.x - (WORLD_WIDTH_TILES * TILE_WIDTH_PIXELS);
-        } break;
-        case Direction_Down:
-        {
-            player->position.y = player->position.y + (WORLD_HEIGHT_TILES * TILE_WIDTH_PIXELS);
-        } break;
-        case Direction_Left:
-        {
-            player->position.x = player->position.x + (WORLD_WIDTH_TILES * TILE_WIDTH_PIXELS);
-        } break;
-        default:
-            break;
-    }
-    if (player->position.x < 0)
-        player->position.x = 0;
 }
 
 EFFECT_FN(SpawnEntity)
@@ -65,6 +38,12 @@ EntityPrototype entity_prototypes[EntityType_NumberOfTypes];
 Direction
 check_for_level_change(Entity* player)
 {
+    // TODO(spencer): looking at center pos isn't the best because we may end up
+    // letting the player move further than they would otherwise be allowed to causing
+    // them to get stuck in off-screen walls.
+    // Ideally the player shouldn't be too concerned with off-screen walls and the level
+    // design should make sure they don't have to be, but we should also be robust enough
+    // to handle it.
     auto player_center = player->position + player->colliders->aabbs[0].extents;
 
     if (player_center.x < 0)
@@ -150,12 +129,17 @@ WorldChunk* load_all_world_chunks(mem::GameMem& memory)
 }
 
 // TODO(spencer): This is half-baked.
-void switch_world_chunk(mem::GameMem& mem, GameState* state, i32 index)
+void switch_world_chunk(mem::GameMem& mem, GameState* state, Direction dir)
 {
-    auto next_chunk = state->first_world_chunk + index;
     auto active_chunk = state->active_world_chunk;
-    auto player = active_chunk->entities + active_chunk->player_id;
+    auto current_coord = active_chunk->overworld_coords;
+    auto new_coord = current_coord + dir_to_vec(dir);
+    auto overworld_dims = state->overworld_dims;
+    u32 next_chunk_idx = (new_coord.y * overworld_dims.x) + new_coord.x;
+    assert(next_chunk_idx < state->overworld_grid.length && "Overflow overworld");
+    auto next_chunk = state->overworld_grid.items[next_chunk_idx];
 
+    auto player = active_chunk->entities + active_chunk->player_id;
     if (next_chunk->player_id == ENTITY_ID_NONE)
     {
         next_chunk->player_id = next_chunk->add_entity(mem, player->type, player->position);
@@ -168,9 +152,129 @@ void switch_world_chunk(mem::GameMem& mem, GameState* state, i32 index)
     other_player->acceleration = player->acceleration;
     other_player->facing_dir = player->facing_dir;
 
+    switch (dir)
+    {
+        case Direction_Up:
+        {
+            other_player->position.y = other_player->position.y - (WORLD_HEIGHT_TILES * TILE_WIDTH_PIXELS);
+        } break;
+        case Direction_Right:
+        {
+            other_player->position.x = other_player->position.x - (WORLD_WIDTH_TILES * TILE_WIDTH_PIXELS);
+        } break;
+        case Direction_Down:
+        {
+            other_player->position.y = other_player->position.y + (WORLD_HEIGHT_TILES * TILE_WIDTH_PIXELS);
+        } break;
+        case Direction_Left:
+        {
+            other_player->position.x = other_player->position.x + (WORLD_WIDTH_TILES * TILE_WIDTH_PIXELS);
+        } break;
+        default:
+            break;
+    }
+    //????
+    if (other_player->position.x < 0)
+    {
+        other_player->position.x = 0;
+    }
+
     state->active_world_chunk = next_chunk;
-    // TODO(spencer): wtf do we do here? buffer or do this elsewhere?
-    //render::make_world_chunk_renderable(&mem.frame_temp_arena, next_chunk);
+}
+
+struct OverworldLevel
+{
+    JsonString *file_name;
+    i32 x;
+    i32 y;
+};
+
+void
+load_stage(mem::GameMem& memory, const char* stage_dir, GameState* state)
+{
+    char filepath_buf[256];
+
+    snprintf(filepath_buf, 256, "%s/stage_1.world", stage_dir);
+    auto world_json = parse_json_file(&memory.frame_temp_arena, filepath_buf);
+
+    auto map_arr = jsonobj_get(world_json->object, "maps", 4)->obj_array;
+
+    auto map_arr_head = map_arr;
+    u32 count = 0;
+    while (map_arr_head)
+    {
+        count++;
+        map_arr_head = map_arr_head->next;
+    }
+
+    auto level_list = mem::make_simple_list<OverworldLevel>(count, &memory.frame_temp_arena);
+
+    map_arr_head = map_arr;
+    m::Vec2 x_range {0, 0};
+    m::Vec2 y_range {0, 0};
+    while (map_arr_head)
+    {
+        auto new_level = mem::simple_list_append_new(&level_list);
+        auto obj = map_arr_head->obj;
+        new_level->file_name = jsonobj_get(obj, "fileName", 8)->string;
+        new_level->x = jsonobj_get(obj, "x", 1)->number->value / 320;
+        new_level->y = jsonobj_get(obj, "y", 1)->number->value / 184;
+
+        if (new_level->x < x_range.x) 
+        {
+            x_range.x = new_level->x;
+        }
+        else if (new_level->x > x_range.y)
+        {
+            x_range.y = new_level->x;
+        }
+
+        if (new_level->y < y_range.x) 
+        {
+            y_range.x = new_level->y;
+        }
+        else if (new_level->y > y_range.y)
+        {
+            y_range.y = new_level->y;
+        }
+
+        map_arr_head = map_arr_head->next;
+    }
+
+    m::Vec2 overworld_dims {x_range.y - x_range.x + 1, y_range.y - y_range.x + 1};
+
+    auto overworld = mem::make_simple_list<WorldChunk*>(overworld_dims.x * overworld_dims.y, &memory.stage_arena);
+
+    WorldChunk* first_world_chunk = nullptr;
+    for (u32 i = 0; i < level_list.length; i++)
+    {
+        auto level = level_list.items + i;
+        auto level_coord = m::Vec2 { level->x + m::abs(x_range.x), -level->y + m::abs(y_range.x) };
+        u32 level_idx = (level_coord.y * overworld_dims.x) + level_coord.x;
+        assert(level_idx < overworld.capacity && "index out of bounds");
+
+        auto n_printed = snprintf(filepath_buf, 256, "%s/", stage_dir);
+        json_str_copy(filepath_buf + n_printed, level->file_name);
+
+        std::cout << "Loading " << filepath_buf << " at " << level_coord << std::endl;
+        overworld.items[level_idx] = load_world_chunk(memory, filepath_buf);
+        overworld.items[level_idx]->overworld_coords = level_coord;
+        if (level->x == 0 && level->y == 0)
+        {
+            first_world_chunk = overworld.items[level_idx];
+        }
+
+        auto map = overworld.items[level_idx]->active_map;
+        tilemap_set_up_and_buffer(map, &memory.frame_temp_arena);
+        tilemap_set_up_and_buffer(map->background, &memory.frame_temp_arena);
+        tilemap_set_up_and_buffer(map->decoration, &memory.frame_temp_arena);
+    }
+
+    overworld.length = overworld.capacity; // lmao bad choice
+    state->overworld_dims = overworld_dims;
+    state->overworld_grid = overworld;
+    state->first_world_chunk = first_world_chunk;
+    state->active_world_chunk = first_world_chunk;
 }
 
 GameState*
@@ -180,18 +284,9 @@ load_game(mem::GameMem& memory)
 
     load_entity_prototypes(memory, "resource/entity/entities.json");
 
-    result->first_world_chunk = load_all_world_chunks(memory);
-    result->active_world_chunk = result->first_world_chunk;
-
-    // TODO(spencer): This doesn't make sense here.
-    // We should ideally have a resident set of tile maps that is tracked somewhere,
-    // and we buffer them in/out as they come into range.
-    // This could (and probably will) be as simple as loading all of the tilemaps in
-    // a chapter when the chapter starts
-    auto map = result->first_world_chunk->active_map;
-    tilemap_set_up_and_buffer(map, &memory.frame_temp_arena);
-    tilemap_set_up_and_buffer(map->background, &memory.frame_temp_arena);
-    tilemap_set_up_and_buffer(map->decoration, &memory.frame_temp_arena);
+    load_stage(memory, "resource/tiled/stage_1", result);
+    //result->first_world_chunk = load_all_world_chunks(memory);
+    //result->active_world_chunk = result->first_world_chunk;
 
     return result;
 }
@@ -210,9 +305,7 @@ simulate_one_tick(mem::GameMem& memory, GameState* game_state, f32 dt, render::B
     auto dir = check_for_level_change(player);
     if (dir != Direction_Stay)
     {
-        level_index = (level_index) ? 0 : 1;
-        auto change_effect = global_effects_map[EffectId_ChangeLevel];
-        change_effect.fn(&memory, game_state, level_index, &dir);
+        switch_world_chunk(memory, game_state, dir);
     }
 
     auto trigger = world_chunk->zone_triggers + 0;

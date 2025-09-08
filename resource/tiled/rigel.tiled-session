@@ -1,0 +1,203 @@
+{
+    "Map/SizeTest": {
+        "height": 4300,
+        "width": 2
+    },
+    "activeFile": "stage_1/start_room.tmj",
+    "expandedProjectPaths": [
+        ".",
+        "stage_1",
+        "stage_1_fuck"
+    ],
+    "fileStates": {
+        "stage_1/Background.tsx": {
+            "scaleInDock": 1,
+            "scaleInEditor": 1
+        },
+        "stage_1/bridge_approach.tmj": {
+            "scale": 0.5,
+            "selectedLayer": 4,
+            "viewCenter": {
+                "x": -239,
+                "y": -289
+            }
+        },
+        "stage_1/emptysky.tmj": {
+            "scale": 0.5,
+            "selectedLayer": 4,
+            "viewCenter": {
+                "x": 81,
+                "y": 79
+            }
+        },
+        "stage_1/freal_junction.tmj": {
+            "scale": 2.9953,
+            "selectedLayer": 1,
+            "viewCenter": {
+                "x": 330.35088305011186,
+                "y": -31.215571061329427
+            }
+        },
+        "stage_1/junction.tmj": {
+            "scale": 0.5,
+            "selectedLayer": 4,
+            "viewCenter": {
+                "x": 401,
+                "y": -289
+            }
+        },
+        "stage_1/lil_mountain.tmj": {
+            "scale": 0.5,
+            "selectedLayer": 4,
+            "viewCenter": {
+                "x": -239,
+                "y": -105
+            }
+        },
+        "stage_1/mountain_back.tmj": {
+            "scale": 0.5,
+            "selectedLayer": 4,
+            "viewCenter": {
+                "x": -559,
+                "y": -105
+            }
+        },
+        "stage_1/mtnsky.tmj": {
+            "scale": 0.5,
+            "selectedLayer": 4,
+            "viewCenter": {
+                "x": -559,
+                "y": 79
+            }
+        },
+        "stage_1/ravine_bridge.tmj": {
+            "scale": 2.9953,
+            "selectedLayer": 1,
+            "viewCenter": {
+                "x": -309.65178780088803,
+                "y": -31.215571061329427
+            }
+        },
+        "stage_1/ravine_lower.tmj": {
+            "scale": 0.5,
+            "selectedLayer": 4,
+            "viewCenter": {
+                "x": -559,
+                "y": -657
+            }
+        },
+        "stage_1/ravine_upper.tmj": {
+            "scale": 0.5,
+            "selectedLayer": 4,
+            "viewCenter": {
+                "x": -559,
+                "y": -473
+            }
+        },
+        "stage_1/spidercave.tmj": {
+            "scale": 0.5,
+            "selectedLayer": 4,
+            "viewCenter": {
+                "x": -239,
+                "y": 79
+            }
+        },
+        "stage_1/stage_exit.tmj": {
+            "scale": 0.5,
+            "selectedLayer": 4,
+            "viewCenter": {
+                "x": -879,
+                "y": -289
+            }
+        },
+        "stage_1/start_room.tmj": {
+            "expandedObjectLayers": [
+                4
+            ],
+            "scale": 3,
+            "selectedLayer": 4,
+            "viewCenter": {
+                "x": 726.8333333333333,
+                "y": 240.83333333333331
+            }
+        },
+        "stage_1/start_room.tmx": {
+            "scale": 0.75,
+            "selectedLayer": 0,
+            "viewCenter": {
+                "x": 802.6666666666666,
+                "y": 34
+            }
+        },
+        "stage_1/stick_spikes.tmj": {
+            "scale": 0.5,
+            "selectedLayer": 4,
+            "viewCenter": {
+                "x": -239,
+                "y": -473
+            }
+        },
+        "stage_1/towards_spider.tmj": {
+            "scale": 0.5,
+            "selectedLayer": 4,
+            "viewCenter": {
+                "x": 81,
+                "y": -105
+            }
+        },
+        "stage_1/towards_stick.tmj": {
+            "scale": 3,
+            "selectedLayer": 1,
+            "viewCenter": {
+                "x": 86.83333333333334,
+                "y": 3.833333333333343
+            }
+        },
+        "stage_1_fuck/Background.tsx": {
+            "scaleInDock": 1
+        },
+        "stage_1_fuck/start_room.tmx": {
+            "scale": 1,
+            "selectedLayer": 0,
+            "viewCenter": {
+                "x": 806,
+                "y": 29.5
+            }
+        },
+        "tiles_merged.tsx": {
+            "scaleInDock": 1,
+            "scaleInEditor": 1
+        }
+    },
+    "last.exportedFilePath": "/home/spennydl/funspace/rigel/resource/tiled/stage_1",
+    "last.worldFilePath": "/home/spennydl/funspace/rigel/resource/tiled/stage_1",
+    "loadedWorlds": [
+        "/home/spennydl/funspace/rigel/resource/tiled/stage_1/stage_1.world"
+    ],
+    "map.height": 23,
+    "map.lastUsedExportFilter": "JSON map files (*.tmj *.json)",
+    "map.lastUsedFormat": "json",
+    "map.tileHeight": 8,
+    "map.tileWidth": 8,
+    "map.width": 40,
+    "openFiles": [
+        "stage_1/start_room.tmj",
+        "tiles_merged.tsx"
+    ],
+    "project": "rigel.tiled-project",
+    "property.type": "Entity",
+    "recentFiles": [
+        "tiles_merged.tsx",
+        "stage_1/start_room.tmj",
+        "stage_1/freal_junction.tmj",
+        "stage_1/junction.tmj",
+        "stage_1/lil_mountain.tmj",
+        "stage_1/mountain_back.tmj",
+        "stage_1/mtnsky.tmj",
+        "stage_1/ravine_bridge.tmj",
+        "stage_1/ravine_lower.tmj",
+        "stage_1/ravine_upper.tmj",
+        "stage_1/spidercave.tmj",
+        "stage_1_fuck/start_room.tmx"
+    ]
+}

@@ -1,0 +1,86 @@
+{
+    "automappingRulesFile": "",
+    "commands": [
+    ],
+    "compatibilityVersion": 1100,
+    "extensionsPath": "extensions",
+    "folders": [
+        "."
+    ],
+    "properties": [
+    ],
+    "propertyTypes": [
+        {
+            "color": "#ffa0a0a4",
+            "drawFill": true,
+            "id": 1,
+            "members": [
+                {
+                    "name": "Type",
+                    "propertyType": "EntityType",
+                    "type": "string",
+                    "value": "EntityType_Player"
+                }
+            ],
+            "name": "Entity",
+            "type": "class",
+            "useAs": [
+                "property",
+                "object",
+                "project"
+            ]
+        },
+        {
+            "id": 2,
+            "name": "EntityType",
+            "storageType": "string",
+            "type": "enum",
+            "values": [
+                "EntityType_Player",
+                "EntityType_Bumpngo"
+            ],
+            "valuesAsFlags": false
+        },
+        {
+            "color": "#ffa0a0a4",
+            "drawFill": true,
+            "id": 3,
+            "members": [
+                {
+                    "name": "Color",
+                    "type": "color",
+                    "value": ""
+                },
+                {
+                    "name": "Intensity",
+                    "type": "float",
+                    "value": 1
+                },
+                {
+                    "name": "LightType",
+                    "propertyType": "LightType",
+                    "type": "string",
+                    "value": "LightType_Point"
+                }
+            ],
+            "name": "Light",
+            "type": "class",
+            "useAs": [
+                "property",
+                "object",
+                "project"
+            ]
+        },
+        {
+            "id": 4,
+            "name": "LightType",
+            "storageType": "string",
+            "type": "enum",
+            "values": [
+                "LightType_Point",
+                "LightType_Circle"
+            ],
+            "valuesAsFlags": false
+        }
+    ]
+}

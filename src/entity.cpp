@@ -98,7 +98,7 @@ collides_with_level(AABB aabb, TileMap* tile_map, m::Vec3 entity_start_position)
             tile_aabb.extents = {4.0f, 4.0f, 0.0f};
             tile_aabb.center = tiles_to_world(tile_x, tile_y) + tile_aabb.extents;
 
-            const auto tile_top = tile_aabb.center.y + tile_aabb.extents.y;
+            f32 tile_top = tile_aabb.center.y + tile_aabb.extents.y;
             if (tile_map->tiles[tile_index] == TileType::VERTICAL_ONEWAY && entity_start_position.y < tile_top)
             {
                 continue;
@@ -126,7 +126,7 @@ move_entity(Entity* entity, TileMap* tile_map, f32 dt, f32 top_speed)
         new_vel.x = top_speed * m::signof(new_vel.x);
     }
 
-    if (m::abs(new_vel.x) < 0.0125)
+    if (m::abs(new_vel.x) < 0.0025)
     {
         new_vel.x = 0;
     }
@@ -214,23 +214,31 @@ move_entity(Entity* entity, TileMap* tile_map, f32 dt, f32 top_speed)
             new_pos = entity_pixel_position;
             break;
         }
+
+        for (i32 i = 0; i < 9; i++)
+        {
+            collided[i] = false;
+        }
     }
 
     // check if we can add the fractional part to velocity
     // NOTE: this is sufficient as long as the level colliders are all pixel-aligned.
     // If that ever changes then we will need a more sophisticated refinement step.
     new_pos = m::floor(new_pos);
-    i32 x_check = new_vel.x > 0 ? 5 : 3;
-    i32 y_check = new_vel.y > 0 ? 1 : 7;
-    if (collided[x_check])
-    {
-        dest_fract.x = 0;
-        new_vel.x = 0;
-    }
-    if (collided[y_check])
-    {
-        dest_fract.y = 0;
-        new_vel.y = 0;
+    if (new_vel.x != 0) {
+        i32 x_check = new_vel.x > 0 ? 5 : 3;
+        if (collided[x_check])
+        {
+            std::cout << "hit it, x_check is " << x_check << std::endl;
+            dest_fract.x = 0;
+            new_vel.x = 0;
+        }
+        i32 y_check = new_vel.y > 0 ? 1 : 7;
+        if (collided[y_check])
+        {
+            dest_fract.y = 0;
+            new_vel.y = 0;
+        }
     }
 
     entity_aabb.center = new_pos + entity_aabb.extents + dest_fract;
@@ -242,7 +250,7 @@ move_entity(Entity* entity, TileMap* tile_map, f32 dt, f32 top_speed)
 
 #define MOVE_ALONG_DDA_LINE 0
 #if MOVE_ALONG_DDA_LINE
-    const auto new_displacement = entity_aabb.center - entity->position;
+    m::Vec3 new_displacement = entity_aabb.center - entity->position;
 
     if ((m::abs(new_displacement.x) >= 1 || m::abs(new_displacement.y) >= 1) ||
         (new_displacement.x == 0 && new_displacement.y == 0))
@@ -254,8 +262,8 @@ move_entity(Entity* entity, TileMap* tile_map, f32 dt, f32 top_speed)
         // extrapolate out 1 full pixel along displacement slope
         // to see if it makes sense to display moving into
         // the target pixel
-        auto dx = new_displacement.x;
-        auto dy = new_displacement.y;
+        f32 dx = new_displacement.x;
+        f32 dy = new_displacement.y;
         f32 step;
         if (m::abs(dx) >= m::abs(dy))
         {
@@ -268,8 +276,8 @@ move_entity(Entity* entity, TileMap* tile_map, f32 dt, f32 top_speed)
         dx = dx / step;
         dy = dy / step;
 
-        const auto extrapolated = m::floor(entity->position + m::Vec3 {dx, dy, 0});
-        auto target = m::floor(new_pos);
+        m::Vec3 extrapolated = m::floor(entity->position + m::Vec3 {dx, dy, 0});
+        m::Vec3 target = m::floor(new_pos);
         target.z = 0;
 
         if (extrapolated == target) {
@@ -287,6 +295,7 @@ move_entity(Entity* entity, TileMap* tile_map, f32 dt, f32 top_speed)
     entity->display_position = m::floor(new_pos);
 #endif
 
+    /*
     if (sqdist_to_dest != 0)
     {
         m::Vec3 to_dest = dest_pixel - new_pos;
@@ -300,6 +309,7 @@ move_entity(Entity* entity, TileMap* tile_map, f32 dt, f32 top_speed)
             new_vel.y = 0;
         }
     }
+    */
     entity->velocity = new_vel;
 
     return move_result;
